@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import * as schema from "@/db/schema";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -24,6 +25,5 @@ function getPool() {
 
 export function getDb() {
   const pool = getPool();
-  return drizzle(pool);
+  return drizzle(pool, { schema });
 }
-
