@@ -1,0 +1,101 @@
+name,name_en,category,price,cost,description,image,available,popular,spicy
+"Patatas Bravas","Patatas Bravas","appetizers",5.90,2.36,"炸土豆配辣味番茄酱与蒜味蛋黄酱",NULL,true,true,1
+"Tortilla Española","Spanish Omelette","appetizers",7.50,3.00,"西班牙土豆洋葱蛋饼",NULL,true,true,0
+"Croquetas de Jamón","Ham Croquettes","appetizers",8.20,3.28,"火腿奶油可乐饼",NULL,true,true,0
+"Pan con Tomate","Tomato Bread","appetizers",4.00,1.60,"番茄橄榄油吐司",NULL,true,false,0
+"Pimientos de Padrón","Padrón Peppers","appetizers",7.20,2.88,"巴德龙青椒，偶有微辣",NULL,true,false,1
+"Gambas al Ajillo","Garlic Shrimp","appetizers",12.90,5.16,"橄榄油蒜香虾",NULL,true,true,0
+"Calamares a la Romana","Fried Calamari","appetizers",11.50,4.60,"香酥炸鱿鱼圈",NULL,true,true,0
+"Boquerones en Vinagre","Marinated Anchovies","appetizers",9.80,3.92,"醋渍银鱼",NULL,true,false,0
+"Jamón Ibérico","Iberian Ham","appetizers",18.50,7.40,"伊比利亚火腿切片",NULL,true,true,0
+"Queso Manchego","Manchego Cheese","appetizers",12.00,4.80,"曼切戈奶酪",NULL,true,false,0
+"Ensaladilla Rusa","Russian Salad","appetizers",6.80,2.72,"西式土豆色拉",NULL,true,false,0
+"Huevos Rotos","Broken Eggs with Fries","appetizers",10.50,4.20,"炸薯条铺半熟蛋与火腿",NULL,true,false,0
+"Chorizo a la Sidra","Chorizo in Cider","appetizers",9.20,3.68,"苹果酒煮西班牙香肠",NULL,true,false,1
+"Pinchos Morunos","Moorish Pork Skewers","appetizers",9.90,3.96,"摩尔风味香料猪肉串",NULL,true,false,1
+"Montaditos Variados","Assorted Montaditos","appetizers",8.50,3.40,"多款西班牙小三明治",NULL,true,false,0
+"Mejillones a la Marinera","Mussels Marinara","appetizers",10.20,4.08,"番茄洋葱酱青口",NULL,true,false,0
+"Navajas a la Plancha","Griddled Razor Clams","appetizers",14.50,5.80,"铁板刀蚝",NULL,true,false,0
+"Almejas a la Marinera","Clams Marinara","appetizers",13.90,5.56,"番茄洋葱酱蛤蜊",NULL,true,false,0
+"Pulpo a la Gallega","Galician Octopus","appetizers",17.90,7.16,"加利西亚风味章鱼配辣椒粉",NULL,true,true,1
+"Gazpacho Andaluz","Andalusian Gazpacho","appetizers",6.50,2.60,"安达卢西亚冷汤",NULL,true,true,0
+"Salmorejo Cordobés","Cordoban Salmorejo","appetizers",7.80,3.12,"科尔多瓦浓郁番茄冷汤",NULL,true,false,0
+"Empanada Gallega","Galician Empanada","appetizers",7.90,3.16,"加利西亚馅饼（肉/金枪鱼）",NULL,true,false,0
+"Esqueixada","Catalan Salted Cod Salad","appetizers",9.80,3.92,"加泰凉拌咸鳕鱼沙拉",NULL,true,false,0
+"Escalivada","Roasted Pepper & Eggplant","appetizers",8.60,3.44,"烤茄子彩椒洋葱冷盘",NULL,true,false,0
+"Gildas","Gilda Skewer","appetizers",5.50,2.20,"巴斯克串：橄榄+凤尾鱼+辣椒",NULL,true,false,1
+"Coca de Trampó","Mallorcan Veg Flatbread","appetizers",7.70,3.08,"马略卡蔬菜薄饼",NULL,true,false,0
+"Ensalada Mixta","Mixed Salad","appetizers",6.90,2.76,"西式什锦沙拉",NULL,true,false,0
+"Salpicón de Marisco","Seafood Salad","appetizers",12.80,5.12,"清爽海鲜丁沙拉",NULL,true,false,0
+"Tortas de Aceite","Olive Oil Crispbread","appetizers",3.90,1.56,"橄榄油薄脆饼佐茴香",NULL,true,false,0
+"Paté de Cabracho","Scorpionfish Pâté","appetizers",11.20,4.48,"红鱼慕斯抹酱",NULL,true,false,0
+"Papas Arrugadas con Mojo","Canary Wrinkled Potatoes","appetizers",7.80,3.12,"加那利皱皮小土豆配莫霍酱",NULL,true,false,1
+"Berenjenas con Miel","Fried Eggplant with Honey","appetizers",7.20,2.88,"炸茄子淋甘蔗糖浆",NULL,true,false,0
+"Queso con Membrillo","Cheese with Quince","appetizers",6.50,2.60,"奶酪配榅桲酱",NULL,true,false,0
+"Bonito con Tomate","Tuna in Tomato Sauce","appetizers",10.90,4.36,"番茄炖金枪鱼",NULL,true,false,0
+"Pipirrana","Andalusian Chopped Salad","appetizers",6.20,2.48,"安达卢西亚番茄黄瓜洋葱沙拉",NULL,true,false,0
+"Espárragos Blancos con Mahonesa","White Asparagus with Mayo","appetizers",8.90,3.56,"白芦笋配蛋黄酱",NULL,true,false,0
+"Morcilla de Burgos","Burgos Black Pudding","appetizers",9.30,3.72,"布尔戈斯血肠配米",NULL,true,false,0
+"Tigres","Stuffed Fried Mussels","appetizers",9.80,3.92,"酿青口裹炸",NULL,true,false,0
+"Patatas Alioli","Potatoes with Garlic Mayo","appetizers",5.80,2.32,"蒜味蛋黄酱土豆",NULL,true,false,0
+"Encurtidos Variados","Mixed Pickles","appetizers",4.80,1.92,"西班牙腌渍小菜拼盘",NULL,true,false,0
+"Paella Valenciana","Valencian Paella","main",19.90,7.96,"瓦伦西亚海陆饭",NULL,true,true,0
+"Fideuà","Seafood Noodle Paella","main",18.90,7.56,"瓦伦西亚面条海鲜锅",NULL,true,false,0
+"Arroz Negro","Black Rice with Squid Ink","main",18.50,7.40,"乌贼墨汁海鲜饭",NULL,true,false,0
+"Arroz a Banda","Alicante Fishermen's Rice","main",17.90,7.16,"海鲜高汤饭",NULL,true,false,0
+"Cocido Madrileño","Madrid Stew","main",16.80,6.72,"马德里炖菜三吃",NULL,true,false,0
+"Fabada Asturiana","Asturian Bean Stew","main",16.50,6.60,"阿斯图里亚斯白芸豆炖",NULL,true,false,0
+"Rabo de Toro","Oxtail Stew","main",22.90,9.16,"红酒慢炖牛尾",NULL,true,true,0
+"Cochinillo Asado","Roast Suckling Pig","main",27.90,11.16,"烤乳猪（塞哥维亚）",NULL,true,false,0
+"Lechazo Asado","Roast Lamb","main",28.50,11.40,"烤羔羊（卡斯蒂利亚）",NULL,true,false,0
+"Cordero a la Segoviana","Segovia-style Lamb","main",24.90,9.96,"塞哥维亚式烤羊排",NULL,true,false,0
+"Bacalao al Pil-Pil","Cod in Pil-Pil Sauce","main",21.50,8.60,"蒜辣橄榄油乳化鳕鱼",NULL,true,false,0
+"Bacalao a la Vizcaína","Basque-style Cod","main",20.90,8.36,"巴斯克红椒酱鳕鱼",NULL,true,false,0
+"Merluza a la Gallega","Galician Hake","main",19.50,7.80,"加利西亚风味无须鳕",NULL,true,false,0
+"Marmitako","Basque Tuna Stew","main",18.40,7.36,"巴斯克金枪鱼马铃薯炖",NULL,true,false,0
+"Zarzuela de Mariscos","Catalan Seafood Stew","main",26.90,10.76,"加泰罗尼亚海鲜杂烩",NULL,true,true,0
+"Suquet de Peix","Catalan Fish Stew","main",23.40,9.36,"加泰土豆鱼炖",NULL,true,false,0
+"Pollo al Ajillo","Garlic Chicken","main",14.90,5.96,"蒜香鸡",NULL,true,false,0
+"Solomillo al Whisky","Pork Loin in Whisky Sauce","main",22.50,9.00,"威士忌汁里脊",NULL,true,false,0
+"Secreto Ibérico a la Plancha","Griddled Iberian Pork","main",21.90,8.76,"伊比利亚猪梅花铁板",NULL,true,false,0
+"Lomo de Orza","Cured Pork Loin","main",16.90,6.76,"安达卢西亚腌里脊",NULL,true,false,0
+"Pisto Manchego con Huevo","Manchego Ratatouille with Egg","main",13.50,5.40,"曼切戈蔬菜杂烩配蛋",NULL,true,false,0
+"Migas Extremeñas","Extremaduran Migas","main",12.50,5.00,"埃斯特雷马杜拉脆面包碎拌肉",NULL,true,false,0
+"Callos a la Madrileña","Madrid-style Tripe","main",15.90,6.36,"马德里肚条炖",NULL,true,false,0
+"Calçots con Salsa Romesco","Grilled Spring Onions","main",12.80,5.12,"烤小葱配罗梅斯科酱",NULL,true,false,0
+"Chuletón de Buey","Bone-in Rib Steak","main",34.90,13.96,"巨厚牛排（干式熟成）",NULL,true,false,0
+"Entrecot a la Parrilla","Grilled Entrecôte","main",24.50,9.80,"炭烤牛外脊",NULL,true,false,0
+"Albóndigas en Salsa","Meatballs in Tomato Sauce","main",13.90,5.56,"番茄肉丸",NULL,true,false,0
+"Escabeche de Perdiz","Partridge in Escabeche","main",23.90,9.56,"腌渍山鹑冷盘",NULL,true,false,0
+"Codornices en Escabeche","Quail in Escabeche","main",18.90,7.56,"腌渍鹌鹑",NULL,true,false,0
+"Chipirones a la Plancha","Griddled Baby Squid","main",17.80,7.12,"铁板小鱿鱼",NULL,true,false,0
+"Churros con Chocolate","Churros with Hot Chocolate","desserts",5.50,2.20,"西班牙吉事果配热巧",NULL,true,true,0
+"Crema Catalana","Catalan Crème Brûlée","desserts",6.50,2.60,"加泰罗尼亚奶冻焦糖脆",NULL,true,false,0
+"Flan de Huevo","Egg Flan","desserts",4.80,1.92,"鸡蛋布丁",NULL,true,false,0
+"Tarta de Santiago","Almond Cake","desserts",6.90,2.76,"杏仁蛋糕（圣地亚哥）",NULL,true,true,0
+"Arroz con Leche","Rice Pudding","desserts",4.90,1.96,"香草肉桂米布丁",NULL,true,false,0
+"Natillas","Vanilla Custard","desserts",4.80,1.92,"西式香草蛋奶羹",NULL,true,false,0
+"Leche Frita","Fried Milk Dessert","desserts",5.20,2.08,"炸牛奶",NULL,true,false,0
+"Torrijas","Spanish-style French Toast","desserts",5.50,2.20,"西班牙法式吐司",NULL,true,false,0
+"Buñuelos de Viento","Fritters","desserts",5.80,2.32,"炸空心小泡芙",NULL,true,false,0
+"Magdalenas Caseras","Homemade Cupcakes","desserts",4.50,1.80,"西班牙家常小蛋糕",NULL,true,false,0
+"Ensaimada Mallorquina","Mallorcan Pastry","desserts",6.80,2.72,"马略卡酥卷",NULL,true,false,0
+"Tarta de Queso","Baked Cheesecake","desserts",6.50,2.60,"烤芝士蛋糕",NULL,true,false,0
+"Piononos de Santa Fe","Piononos","desserts",5.80,2.32,"格拉纳达名点薄卷蛋糕",NULL,true,false,0
+"Mousse de Turrón","Nougat Mousse","desserts",6.90,2.76,"牛轧糖慕斯",NULL,true,false,0
+"Fartons con Horchata","Fartons with Horchata","desserts",4.20,1.68,"法东甜面包配虎坚果露",NULL,true,false,0
+"Tarta de Galletas","Biscuit Layer Cake","desserts",5.90,2.36,"饼干层蛋糕",NULL,true,false,0
+"Cuajada","Set Curd Dessert","desserts",4.80,1.92,"巴斯克凝乳甜品",NULL,true,false,0
+"Mantecados","Shortbread Cookies","desserts",4.20,1.68,"圣诞酥饼",NULL,true,false,0
+"Polvorones","Almond Crumbly Cookies","desserts",4.20,1.68,"杏仁沙酥饼",NULL,true,false,0
+"Huesos de Santo","Marzipan Sweets","desserts",6.20,2.48,"万圣节杏仁蛋黄糕",NULL,true,false,0
+"Sangría","Sangria","drinks",6.50,2.60,"水果红酒饮",NULL,true,true,0
+"Tinto de Verano","Red Wine Spritzer","drinks",4.50,1.80,"红酒汽水",NULL,true,false,0
+"Horchata de Chufa","Tiger Nut Milk","drinks",3.90,1.56,"瓦伦西亚虎坚果露",NULL,true,false,0
+"Cava Brut","Cava Brut","drinks",5.90,2.36,"加泰起泡酒",NULL,true,false,0
+"Sidra Asturiana","Asturian Cider","drinks",4.90,1.96,"阿斯图里亚斯苹果酒",NULL,true,false,0
+"Vermut de Grifo","Draft Vermouth","drinks",4.80,1.92,"生啤式苦艾酒",NULL,true,false,0
+"Kalimotxo","Red Wine with Cola","drinks",4.50,1.80,"红酒可乐",NULL,true,false,0
+"Agua de Valencia","Valencia Cocktail","drinks",6.90,2.76,"橙汁起泡鸡尾酒",NULL,true,false,0
+"Rebujito","Fino with Lemon Soda","drinks",4.80,1.92,"赫雷斯菲诺+柠檬汽水",NULL,true,false,0
+"Café con Leche","Coffee with Milk","drinks",2.50,1.00,"牛奶咖啡",NULL,true,false,0
