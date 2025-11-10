@@ -7,6 +7,7 @@
 
 功能文档索引
 - [Display Restaurant Tables](doc/agents/features/display_table-plan.md)
+- [Display Menu Items](doc/agents/features/display_menu_items-PLAN.md)
 
 ---
 
@@ -89,3 +90,73 @@
   - `doc/guides/nextjs-tailwind-best-practices.md`
 - 模板：`doc/agents/template/features/feature.md`
 
+---
+
+# Run: Display Menu Items
+
+说明
+- 目标：读取 Supabase 表 `menu_items`，实现只读 API，并在不改动页面尺寸/布局的前提下，让 `components/menu-management.tsx` 用真实数据按“分类 → 菜品”展示；分类数量与每类菜品数量与数据库一致。
+- 阅读规范：`doc/guides/nextjs.instructions.md`、`doc/guides/nextjs-tailwind.instructions.md`
+- 参考功能说明：`doc/agents/features/display_menu_items-PLAN.md`
+
+注意
+- 不修改 `app/menu/page.tsx` 的结构与尺寸；前端仅改造 `components/menu-management.tsx` 的数据来源。
+- 保留“全部”分类；分类计数来自 items 聚合；仅显示 `available=true`。
+- 每个任务独立、≤2 小时、可直接提交；提示词包含 `use context7`（必要时查阅文档）。
+
+### Task 1: 新增 API `GET /api/menu-items`
+**预计时间**: 0.5–1 小时  
+**依赖**: 无
+
+**AI 提示词**:
+你是一位资深 Next.js + Drizzle 工程师。ultrathink use context7。
+开始前阅读：`doc/guides/nextjs.instructions.md`。
+目标：在 `app/api/menu-items/route.ts` 实现 `GET`，使用 `lib/db.ts` 连接，从 `db/schema.ts` 的 `menuItems` 读取 `available=true` 的记录；将 `price`（numeric）转换为 `number`；返回：
+```json
+{ "categories": [{"id":"all","name":"全部"}, {"id":"<cat>","name":"<cat>"}, ...], "items": [ ... ] }
+```
+要求：
+- 错误处理返回 500，消息包含 `detail` 字段；不得泄露敏感信息。
+- 仅在 API 内做数据适配（不修改 schema）。
+
+输出：`app/api/menu-items/route.ts`。
+
+### Task 2: 改造 `components/menu-management.tsx` 使用 API 数据
+**预计时间**: 0.5–1 小时  
+**依赖**: Task 1
+
+**AI 提示词**:
+你是一位资深的 Next.js 前端工程师。use context7。
+目标：将 `components/menu-management.tsx` 中的本地 `menuCategories` 与 `mockMenuItems` 替换为从 `/api/menu-items` 拉取的真实数据，保持：
+- 现有布局、尺寸与样式不变；
+- 顶部分类含“全部”，分类数量与 DB 匹配且带计数；
+- 搜索/筛选逻辑保持一致；
+- 接口失败时不崩溃，显示空列表。
+
+输出：仅修改 `components/menu-management.tsx`。
+
+### Task 3: 集成验证（`/menu` 页面）
+**预计时间**: 0.5 小时  
+**依赖**: Task 2
+
+**AI 提示词**:
+你是一位细心的 QA/前端工程师。use context7。
+步骤：
+- 确认 `.env.local` 配置了 `DATABASE_URL`（Supabase 连接串）。
+- 打开 `/menu` 页面，验证分类数量与每类菜品数量正确；搜索/筛选可用；页面尺寸未变化。
+- 若 API 失败，前端不崩溃，空列表呈现。
+
+### Task 4: 文档核对
+**预计时间**: 0.5 小时  
+**依赖**: Task 3
+
+**AI 提示词**:
+你是一位严谨的文档维护者。
+核对并在 `doc/agents/features/display_menu_items-PLAN.md` 勾选 AC；在 PR 中附 `/api/menu-items` 响应与 `/menu` 页面分类/列表截图；简述运行步骤（`.env.local`、SSL）。
+
+## Links
+- 功能说明：`doc/agents/features/display_menu_items-PLAN.md`
+- 规范：
+  - `doc/guides/nextjs.instructions.md`
+  - `doc/guides/nextjs-tailwind.instructions.md`
+- 模板：`doc/agents/FEATURES_Template.md`
