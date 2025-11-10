@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,6 +43,14 @@ interface MenuItem {
   sales?: number
   revenue?: number
 }
+
+interface Category {
+  id: string
+  name: string
+  count?: number
+}
+
+const DEFAULT_CATEGORIES: Category[] = [{ id: "all", name: "全部菜品", count: 0 }]
 
 const menuCategories = [
   { id: "all", name: "全部菜品", count: 12 },
@@ -228,10 +236,57 @@ const mockMenuItems: MenuItem[] = [
 export function MenuManagement() {
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
-  const [items, setItems] = useState(mockMenuItems)
+  const [items, setItems] = useState<MenuItem[]>([])
+  const [dynamicCategories, setDynamicCategories] = useState<Category[]>(DEFAULT_CATEGORIES)
   const [editDialog, setEditDialog] = useState(false)
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null)
   const [isNewItem, setIsNewItem] = useState(false)
+
+  useEffect(() => {
+    let aborted = false
+    const load = async () => {
+      try {
+        const res = await fetch("/api/menu-items", { cache: "no-store" })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (aborted) return
+        const fetched: MenuItem[] = Array.isArray(data?.items)
+          ? data.items.map((i: any) => ({
+              id: String(i.id),
+              name: String(i.name ?? ""),
+              nameEn: String(i.nameEn ?? ""),
+              category: String(i.category ?? "uncategorized"),
+              price: typeof i.price === "number" ? i.price : Number(i.price ?? 0),
+              image: String(i.image ?? ""),
+              available: Boolean(i.available ?? true),
+              popular: Boolean(i.popular ?? false),
+              spicy: Number(i.spicy ?? 0),
+            }))
+          : []
+        setItems(fetched)
+
+        const counts = new Map<string, number>()
+        for (const it of fetched) counts.set(it.category, (counts.get(it.category) ?? 0) + 1)
+        const ids = Array.from(counts.keys())
+        const cats: Category[] = [
+          { id: "all", name: "全部菜品", count: fetched.length },
+          ...ids.map((id) => ({ id, name: id, count: counts.get(id) ?? 0 })),
+        ]
+        setDynamicCategories(cats)
+
+        // 保证选中分类有效
+        const valid = new Set(cats.map((c) => c.id))
+        if (!valid.has(selectedCategory)) setSelectedCategory("all")
+      } catch (e) {
+        setItems([])
+        setDynamicCategories(DEFAULT_CATEGORIES)
+      }
+    }
+    load()
+    return () => {
+      aborted = true
+    }
+  }, [])
 
   const filteredItems = items.filter((item) => {
     const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
@@ -352,7 +407,7 @@ export function MenuManagement() {
         <Card className="p-4 bg-card border-border h-fit">
           <h3 className="font-semibold text-foreground mb-4">分类</h3>
           <div className="space-y-1">
-            {menuCategories.map((category) => (
+            {dynamicCategories.map((category) => (
               <button
                 key={category.id}
                 onClick={() => setSelectedCategory(category.id)}
