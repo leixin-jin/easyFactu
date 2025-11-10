@@ -5,165 +5,145 @@
 - Status: proposed
 
 ## Summary
-在 Next.js 应用中新增“桌台列表”页面，从 Supabase（Postgres）中的 `restaurant_tables` 表读取数据并展示。数据有几条就展示几张卡片（如 5 条显示 5 张），并提供基础的空/错/加载态。后端提供只读 API 以供前端获取。
+从 Supabase（Postgres）中的 `restaurant_tables` 表读取数据，并在现有页面与组件结构下展示。严格遵循：不修改 `app/tables/page.tsx` 的页面结构；前端以现有组件 `components/table-management.tsx` 为主体渲染，数据有几条就展示几张（5 条 = 5 张，10 条 = 10 张）。
 
 ## Scope
-- In: 
-  - 前端页面：`app/tables/page.tsx`
-  - UI 组件：`components/Tables/TableGrid.tsx`、`components/Tables/TableCard.tsx`
-  - 后端 API：`app/api/restaurant-tables/route.ts`（GET）
-  - 与 `db/schema.ts` 的 Drizzle 映射（如需）
+- In:
+  - 页面：`app/tables/page.tsx`（不得修改结构；如需，仅允许补极小型调用说明/导入保持一致）
+  - UI 组件：仅使用并改造 `components/table-management.tsx`（替换内置 mock 为真实数据）
+  - API：`app/api/restaurant-tables/route.ts`（GET，只读）
+  - DB：`db/schema.ts` 中 `restaurant_tables` 的 Drizzle 映射确认
 - Out:
-  - 不涉及创建/编辑/删除桌台的后台管理
-  - 不涉及权限、登录与复杂状态流转
-  - 不涉及实时订阅或消息推送
+  - 不新增其它 UI 组件（如 `components/Tables/*`）
+  - 不改动页面路由与布局结构
+  - 不涉及创建/编辑/删除桌台、权限与实时订阅
 
 ## UX Notes
-- 页面：标题“桌台列表”，网格卡片布局，卡片显示：桌台编号/名称、可选的容纳人数与状态（available/occupied 等）。
-- 空状态：无数据时展示插图与“暂无桌台”。
-- 错误状态：请求失败时给出错误提示并可重试。
-- 加载状态：骨架屏或 Spinner。
+- 沿用 `components/table-management.tsx` 现有布局与交互（筛选、统计、网格/列表切换等）。
+- 将“数据源”由 mock 替换为 API 返回；空/错/加载态需友好且不跳闪。
 
 ## API / DB
 - API:
-  - `GET /api/restaurant-tables`：返回 `restaurant_tables` 的行数组。
-  - 响应示例（字段以实际表为准）：
+  - `GET /api/restaurant-tables`：返回 `restaurant_tables` 的行数组（仅必要字段）。
+  - 响应示例：
     ```json
     [
-      {"id": 1, "name": "A1", "capacity": 4, "status": "available"},
-      {"id": 2, "name": "A2", "capacity": 2, "status": "occupied"}
+      {"id": "uuid", "number": "A-01", "capacity": 4, "status": "idle", "area": "大厅A区"}
     ]
     ```
 - DB:
-  - 读取 Supabase 数据库表 `restaurant_tables`。
-  - 若需在 `db/schema.ts` 中新增 Drizzle 映射（不一定需要迁移）：
-    - 建议最小字段：`id`（主键）、`name`/`number`、`capacity?`、`status?`。
-    - 如需变更数据库结构，请在 PR 中说明并使用：`pnpm drizzle:generate && pnpm drizzle:push`。
-  - 如需种子数据，请更新 `seed/` 并在 PR 中说明。
+  - 读取 Supabase 表 `restaurant_tables`。
+  - 确认 `db/schema.ts` 映射：`id`, `number`, `capacity?`, `status?`, `area?`。
+  - 若需结构变更：`pnpm drizzle:generate && pnpm drizzle:push`（变更需在 PR 说明）。
 
 ## Workflow
-1. 设计 → 2. Schema/Migration → 3. UI → 4. API → 5. 联调 → 6. 种子/文档 → 7. 验收
+1. 设计 → 2. Schema/确认 → 3. API → 4. 组件改造 → 5. 联调 → 6. 文档 → 7. 验收
 
 ## Acceptance Criteria
-- [ ] 页面成功渲染来自 `restaurant_tables` 的数据，N 条记录渲染 N 张卡片。
-- [ ] 支持空、加载、错误状态，用户体验清晰。
-- [ ] API 使用 Drizzle 或等效方式读取 Postgres（Supabase）并返回 JSON。
-- [ ] 不额外泄露敏感字段；响应时间可接受，并具备基本日志。
-- [ ] 文档（本文件）与代码路径一致，可直接交付。
+- [ ] `components/table-management.tsx` 由 API 数据驱动，移除 mock（或在失败时回退）。
+- [ ] `/tables` 页面不改结构即可渲染 N 条= N 卡片。
+- [ ] 具备空/加载/错误态与最小日志；不泄露敏感字段。
+- [ ] 文档与代码路径一致。
 
 ## 任务清单（≤2 小时/任务，独立可提交）
 
-参考规范（在开始前阅读）：
+参考规范（开始前阅读）：
 - Next.js: `../../guides/nextjs-best-practices.md`
 - Next.js + Tailwind: `../../guides/nextjs-tailwind-best-practices.md`
 
 ### Task 1: 确认/补充 `restaurant_tables` 的 Drizzle 映射
-**预计时间**: 1 小时  
+**预计时间**: 0.5–1 小时
 **依赖**: 无
 
 **AI 提示词**:
-你是一位资深的全栈工程师（Next.js + Drizzle + Supabase）。请先阅读：
+你是一位资深全栈工程师（Next.js + Drizzle + Supabase）。请先阅读：
 - `doc/guides/nextjs-best-practices.md`
 - `doc/guides/nextjs-tailwind-best-practices.md`
 
-目标：在不更改数据库结构的前提下，为 Supabase 中已存在的 `restaurant_tables` 表在 `db/schema.ts` 中补充/确认 Drizzle 映射（仅映射，不迁移）。如字段与示例不一致，请以实际库表为准。
+目标：在不更改数据库结构前提下，确认/补充 `db/schema.ts` 中 `restaurant_tables` 的映射。如与实际表存在差异，以实际表为准。
 
 要求：
-- 在 `db/schema.ts` 中新增（或确认）`restaurantTables` 映射，字段至少包含：`id`（主键）、`name`/`number`、`capacity?`、`status?`。
-- 不创建迁移；若确需变更结构，先在 PR 说明并使用 `pnpm drizzle:generate && pnpm drizzle:push`。
-- 提交修改后给出简短说明。
+- 字段至少：`id`, `number`, `capacity?`, `status?`, `area?`。
+- 不创建迁移；如需结构变更，在 PR 说明并执行 `pnpm drizzle:generate && pnpm drizzle:push`。
 
-关键字：ultrathink, use context7（如需查阅 Drizzle 文档）。
+关键字：ultrathink, use context7（查阅 Drizzle 文档）。
 
 ---
 
-### Task 2: 实现 API 路由 `GET /api/restaurant-tables`
-**预计时间**: 1 小时  
+### Task 2: 实现只读 API `GET /api/restaurant-tables`
+**预计时间**: 1 小时
 **依赖**: Task 1
 
 **AI 提示词**:
-你是一位资深的 Next.js API 工程师。请先阅读：
-- `doc/guides/nextjs-best-practices.md`
+你是一位资深 Next.js API 工程师。请先阅读 `doc/guides/nextjs-best-practices.md`。use context7。
 
-目标：新增 `app/api/restaurant-tables/route.ts`，实现 `GET` 读取 `restaurant_tables` 并返回 JSON 数组。
+目标：新增 `app/api/restaurant-tables/route.ts`，读取 `restaurant_tables` 并返回最小字段 JSON 数组。
 
 要求：
-- 使用项目现有的 Drizzle 连接（`DATABASE_URL`），从 `restaurant_tables` 读取数据。
-- 响应仅返回必要字段（`id`, `name`/`number`, `capacity?`, `status?`）。
-- 处理错误并返回合适的状态码；记录错误日志。
+- 使用项目现有 Drizzle 连接（`DATABASE_URL`）。
+- 返回字段：`id`, `number`, `capacity?`, `status?`, `area?`。
+- 处理错误并返回合适状态码；记录日志。
 
 输出：`app/api/restaurant-tables/route.ts`。
 
-关键字：use context7（如需查阅 Next.js App Router API Routes 或 Drizzle 文档）。
-
 ---
 
-### Task 3: Scaffold 前端页面 `app/tables/page.tsx`
-**预计时间**: 1 小时  
+### Task 3: 改造 `components/table-management.tsx` 用 API 数据
+**预计时间**: 1–1.5 小时
 **依赖**: Task 2
 
 **AI 提示词**:
-你是一位资深的 Next.js + Tailwind 前端工程师。请先阅读：
+你是一位资深 Next.js + Tailwind 前端工程师。请认真通读并理解 `components/table-management.tsx` 现有代码与 UI。开始前阅读：
 - `doc/guides/nextjs-best-practices.md`
 - `doc/guides/nextjs-tailwind-best-practices.md`
 
-目标：创建 `app/tables/page.tsx`（Server Component 优先），请求 `GET /api/restaurant-tables` 显示桌台列表。
+目标：将组件内的 `mockTables` 替换为来自 `GET /api/restaurant-tables` 的数据源，保持现有 UI/交互不变，不修改 `app/tables/page.tsx` 的结构。
 
 要求：
-- SSR 获取数据并渲染；提供加载与空状态占位。
-- 页面包含标题与说明；使用响应式网格布局。
-- 将展示逻辑抽离到组件（参考 Task 4）。
+- 使用 `useEffect`/`fetch` 或 SWR 从 `/api/restaurant-tables` 拉取数据；提供 loading/错误/空态处理。
+- 将返回数据映射到本组件 `Table` 类型所需字段（缺省字段以安全回退显示）。
+- 统计、筛选与渲染逻辑均基于实时数据（N 条= N 卡片）。
+- 保持导出签名不变：`export function TableManagement()`。
 
-输出：`app/tables/page.tsx`。
+输出：仅修改 `components/table-management.tsx`，不引入新目录结构。
 
-关键字：ultrathink, use context7（如需查阅 Next.js 数据获取与 Server Components 文档）。
+关键字：ultrathink, use context7（如需查阅 SWR/数据获取最佳实践）。
 
 ---
 
-### Task 4: 封装 UI 组件（TableGrid / TableCard）
-**预计时间**: 1 小时  
+### Task 4: 联调与空/错/加载体验完善
+**预计时间**: 0.5–1 小时
 **依赖**: Task 3
 
 **AI 提示词**:
-你是一位资深的 Tailwind/组件工程师。请先阅读：
-- `doc/guides/nextjs-tailwind-best-practices.md`
+你是一位资深前端工程师。阅读 `doc/guides/nextjs-best-practices.md`。use context7。
 
-目标：在 `components/Tables/` 下创建：
-- `TableGrid.tsx`：接收 `tables` 数组并按网格渲染。
-- `TableCard.tsx`：展示单个桌台信息（名称/编号、capacity、状态颜色）。
+目标：完善 `table-management` 的加载 Skeleton、错误提示与重试（轻量客户端逻辑）。
 
 要求：
-- 样式遵循 Tailwind 规范；保持无障碍（aria/role）。
-- 空数组时在 `TableGrid` 内部渲染空态文案。
+- 错误时提示用户并可重试（`router.refresh()` 或重新拉取）。
+- 空态清晰可见，不与最终内容跳闪。
 
-输出：`components/Tables/TableGrid.tsx`, `components/Tables/TableCard.tsx`。
-
-关键字：use context7（如需查阅 Tailwind 组件规范或 A11y 资料）。
+输出：更新 `components/table-management.tsx`。
 
 ---
 
-### Task 5: 错误与加载体验完善
-**预计时间**: 0.5–1 小时  
-**依赖**: Task 3
+### Task 5: 文档与验收
+**预计时间**: 0.5 小时
+**依赖**: Task 4
 
 **AI 提示词**:
-你是一位资深前端工程师。请先阅读：
-- `doc/guides/nextjs.instructions.md`
-- `doc/guides/nextjs-tailwind.instructions.md`
+你是一位严谨的文档维护者。请更新本功能验收记录并在 PR 中附带截图（API 响应与页面效果：5 条=5 卡片），标注依赖、运行步骤与注意事项。
 
-目标：为 `app/tables/page.tsx` 与组件增加加载骨架、错误提示与简单重试逻辑（客户端轻量交互可选）。
-
-要求：
-- 在 API 报错时给出用户友好的提示。
-- Loading Skeleton 与空态清晰，不与最终内容跳闪。
-
-输出：更新 `app/tables/page.tsx` 与相关组件。
-
-关键字：use context7（如需查阅 Next.js 加载/错误处理文档）。
+输出：更新本文件“Acceptance Criteria”勾选项与 Links 区域。
 
 ## Links
 - 规范与参考：
   - `../../guides/nextjs-best-practices.md`
   - `../../guides/nextjs-tailwind-best-practices.md`
-- 相关 Issue / PR / 设计稿 / 讨论记录：TBD
+- 相关代码：
+  - `components/table-management.tsx`
+  - `app/tables/page.tsx`
+  - `app/api/restaurant-tables/route.ts`
+  - `db/schema.ts`
 
