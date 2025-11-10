@@ -164,7 +164,15 @@ const mockMenuItems: MenuItem[] = [
   },
 ]
 
-const mockTables = [
+type TableStatus = "idle" | "occupied"
+interface TableOption {
+  id: string
+  number: string
+  status?: TableStatus
+}
+
+// 仅用于接口失败时的降级回退
+const mockTables: TableOption[] = [
   { id: "1", number: "A-01", status: "occupied" },
   { id: "2", number: "A-02", status: "idle" },
   { id: "3", number: "A-03", status: "occupied" },
@@ -174,38 +182,65 @@ const mockTables = [
 
 export function POSInterface() {
   const searchParams = useSearchParams()
-  const initialTableId = useMemo(() => {
-    const byId = searchParams.get("tableId")
-    if (byId) return byId
-    const byNumber = searchParams.get("tableNumber")
-    if (byNumber) {
-      const found = mockTables.find((t) => t.number === byNumber)
-      return found?.id || ""
-    }
-    return ""
-  }, [searchParams])
+  const byIdParam = searchParams.get("tableId") || ""
+  const tableNumberParam = searchParams.get("tableNumber") || ""
+
+  // 桌台列表（来自 API），失败时回退到 mock
+  const [tables, setTables] = useState<TableOption[]>([])
+  const [loadingTables, setLoadingTables] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [cart, setCart] = useState<CartItem[]>([])
-  const [selectedTable, setSelectedTable] = useState<string>(initialTableId)
+  const [selectedTable, setSelectedTable] = useState<string>("")
   const [checkoutDialog, setCheckoutDialog] = useState(false)
   const [discount, setDiscount] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [hangUpDialog, setHangUpDialog] = useState(false)
   const [splitTableDialog, setSplitTableDialog] = useState(false)
   const [mergeTableDialog, setMergeTableDialog] = useState(false)
-  const [operationStatus, setOperationStatus] = useState<"closed" | "open" | "pending">(
-    initialTableId ? "open" : "closed",
-  )
+  const [, setOperationStatus] = useState<"closed" | "open" | "pending">("closed")
+
+  // 加载桌台列表
+  async function loadTables() {
+    try {
+      setLoadingTables(true)
+      setLoadError(null)
+      const res = await fetch("/api/restaurant-tables", { cache: "no-store" })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: Array<{ id: string; number: string; status?: string | null }> = await res.json()
+      const mapped: TableOption[] = data.map((r) => ({ id: String(r.id), number: r.number, status: (r.status as TableStatus) ?? "idle" }))
+      setTables(mapped)
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : "加载失败")
+      setTables(mockTables)
+    } finally {
+      setLoadingTables(false)
+    }
+  }
 
   useEffect(() => {
-    // If the tableId param changes (e.g., via navigation), reflect it in local state
-    if (initialTableId && initialTableId !== selectedTable) {
-      setSelectedTable(initialTableId)
+    loadTables()
+  }, [])
+
+  // 基于 URL 参数在表加载后设定初始选中项
+  useEffect(() => {
+    // 优先 tableId
+    if (byIdParam) {
+      setSelectedTable(byIdParam)
       setOperationStatus("open")
+      return
     }
-  }, [initialTableId])
+    // 其次 tableNumber
+    if (tableNumberParam && tables.length > 0) {
+      const found = tables.find((t) => t.number === tableNumberParam)
+      if (found) {
+        setSelectedTable(found.id)
+        setOperationStatus("open")
+      }
+    }
+  }, [byIdParam, tableNumberParam, tables])
 
   const filteredItems = mockMenuItems.filter((item) => {
     const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
@@ -260,7 +295,9 @@ export function POSInterface() {
             <h1 className="text-3xl font-bold text-foreground text-balance">点单系统</h1>
             <p className="text-muted-foreground mt-1">
               {selectedTable
-                ? `当前桌台: ${mockTables.find((t) => t.id === selectedTable)?.number || searchParams.get("tableNumber") || "未知"}`
+                ? `当前桌台: ${tables.find((t) => t.id === selectedTable)?.number || "未知"}`
+                : tableNumberParam
+                ? `当前桌台: ${tableNumberParam}`
                 : "选择菜品并添加到订单"}
             </p>
           </div>
@@ -360,13 +397,13 @@ export function POSInterface() {
             <Badge variant="secondary">{cart.reduce((sum, item) => sum + item.quantity, 0)} 项</Badge>
           </div>
 
-          {/* Table selection */}
+          {/* 选择桌台（来自 Supabase 数据）*/}
           <Select value={selectedTable} onValueChange={setSelectedTable}>
             <SelectTrigger>
               <SelectValue placeholder="选择桌台" />
             </SelectTrigger>
             <SelectContent>
-              {mockTables.map((table) => (
+              {tables.map((table) => (
                 <SelectItem key={table.id} value={table.id}>
                   {table.number}
                 </SelectItem>
@@ -512,7 +549,7 @@ export function POSInterface() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>订单结账</DialogTitle>
-            <DialogDescription>桌台: {mockTables.find((t) => t.id === selectedTable)?.number}</DialogDescription>
+            <DialogDescription>桌台: {tables.find((t) => t.id === selectedTable)?.number || tableNumberParam}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
