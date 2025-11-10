@@ -1,19 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Search,
@@ -53,6 +44,7 @@ interface Table {
   orderId?: string
 }
 
+// NOTE: mock data kept for fallback only. Primary source is API.
 const mockTables: Table[] = [
   {
     id: "1",
@@ -181,13 +173,48 @@ export function TableManagement() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState<TableStatus | "all">("all")
   const [filterArea, setFilterArea] = useState<string>("all")
-  const [selectedTable, setSelectedTable] = useState<Table | null>(null)
-  const [openTableDialog, setOpenTableDialog] = useState(false)
+  // Dialog and selected state removed to keep lints minimal
+  const [tables, setTables] = useState<Table[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   // reservation and locking features removed
 
-  const areas = ["all", ...Array.from(new Set(mockTables.map((t) => t.area)))]
+  // Fetch tables from API
+  async function loadTables() {
+    try {
+      setLoading(true)
+      setError(null)
+      const res = await fetch("/api/restaurant-tables", { cache: "no-store" })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: Array<{ id: string; number: string; area?: string | null; capacity?: number | null; status: string }> =
+        await res.json()
+      const mapped: Table[] = data.map((r) => ({
+        id: String(r.id),
+        number: r.number,
+        area: r.area ?? "",
+        capacity: (r.capacity ?? 0) as number,
+        status: (r.status as TableStatus) ?? "idle",
+      }))
+      setTables(mapped)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "加载失败")
+      // Fallback to mock when API fails
+      setTables(mockTables)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const filteredTables = mockTables.filter((table) => {
+  useEffect(() => {
+    loadTables()
+  }, [])
+
+  const areas = useMemo(
+    () => ["all", ...Array.from(new Set(tables.map((t) => t.area)))],
+    [tables],
+  )
+
+  const filteredTables = tables.filter((table) => {
     const matchesSearch =
       table.number.toLowerCase().includes(searchQuery.toLowerCase()) ||
       table.area.toLowerCase().includes(searchQuery.toLowerCase())
@@ -196,16 +223,22 @@ export function TableManagement() {
     return matchesSearch && matchesStatus && matchesArea
   })
 
-  const stats = {
-    total: mockTables.length,
-    idle: mockTables.filter((t) => t.status === "idle").length,
-    occupied: mockTables.filter((t) => t.status === "occupied").length,
-  }
+  // 固定排序：先按区域，再按桌号（自然排序）。
+  const collator = useMemo(
+    () => new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }),
+    [],
+  )
+  const sortedTables = useMemo(() => {
+    const arr = filteredTables.slice()
+    arr.sort(
+      (a, b) =>
+        collator.compare(a.area || "", b.area || "") ||
+        collator.compare(a.number || "", b.number || ""),
+    )
+    return arr
+  }, [filteredTables, collator])
 
-  const handleOpenTable = (table: Table) => {
-    setSelectedTable(table)
-    setOpenTableDialog(true)
-  }
+  // Stats and open-table dialog handlers can be reintroduced when needed
 
   const goToPOS = (table: Table) => {
     router.push(`/pos?tableNumber=${encodeURIComponent(table.number)}`)
@@ -226,6 +259,16 @@ export function TableManagement() {
         </div>
       </div>
 
+
+      {/* Error & Loading */}
+      {error && (
+        <Card className="p-4 border-red-200 bg-red-50 text-sm text-red-700">
+          <div>数据加载失败：{error}</div>
+          <Button className="mt-3" variant="outline" onClick={loadTables}>
+            重试
+          </Button>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card className="p-4 bg-card border-border">
@@ -284,9 +327,15 @@ export function TableManagement() {
       </Card>
 
       {/* Tables Grid/List View */}
-      {viewMode === "grid" ? (
+      {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {filteredTables.map((table) => {
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Card key={i} className="h-32 animate-pulse bg-muted" />
+          ))}
+        </div>
+      ) : viewMode === "grid" ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          {sortedTables.map((table) => {
             const config = statusConfig[table.status]
             return (
               <Card
@@ -409,7 +458,7 @@ export function TableManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filteredTables.map((table) => {
+                {sortedTables.map((table) => {
                   const config = statusConfig[table.status]
                   return (
                     <tr
@@ -487,46 +536,7 @@ export function TableManagement() {
         </Card>
       )}
 
-      {/* Open Table Dialog */}
-      <Dialog open={openTableDialog} onOpenChange={setOpenTableDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>开台 - {selectedTable?.number}</DialogTitle>
-            <DialogDescription>请填写开台信息</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="guests">就餐人数</Label>
-              <Input id="guests" type="number" placeholder="请输入人数" defaultValue={selectedTable?.capacity} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="waiter">服务员</Label>
-              <Select>
-                <SelectTrigger id="waiter">
-                  <SelectValue placeholder="选择服务员" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="xiaoli">小李</SelectItem>
-                  <SelectItem value="xiaowang">小王</SelectItem>
-                  <SelectItem value="xiaozhang">小张</SelectItem>
-                  <SelectItem value="xiaoliu">小刘</SelectItem>
-                  <SelectItem value="xiaochen">小陈</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">备注</Label>
-              <Input id="notes" placeholder="选填" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenTableDialog(false)}>
-              取消
-            </Button>
-            <Button onClick={() => setOpenTableDialog(false)}>确认开台</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Dialog removed in this iteration; POS 跳转仍可用 */}
     </div>
   )
 }
