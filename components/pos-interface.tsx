@@ -16,11 +16,12 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Plus, Minus, Trash2, ShoppingCart, Receipt, Printer, Copy, Book as Hook, Split, ArrowLeft } from "lucide-react"
+import { Search, Plus, Minus, Trash2, ShoppingCart, Receipt, Printer, Copy, Split, ArrowLeft } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { useMenuData } from "@/hooks/useMenuData"
 
 interface MenuItem {
   id: string
@@ -39,130 +40,7 @@ interface CartItem extends MenuItem {
   notes?: string
 }
 
-const menuCategories = [
-  { id: "all", name: "全部", nameEn: "All" },
-  { id: "appetizers", name: "开胃菜", nameEn: "Appetizers" },
-  { id: "main", name: "主菜", nameEn: "Main Courses" },
-  { id: "pasta", name: "意面", nameEn: "Pasta" },
-  { id: "pizza", name: "披萨", nameEn: "Pizza" },
-  { id: "desserts", name: "甜品", nameEn: "Desserts" },
-  { id: "drinks", name: "饮品", nameEn: "Drinks" },
-]
-
-const mockMenuItems: MenuItem[] = [
-  {
-    id: "1",
-    name: "凯撒沙拉",
-    nameEn: "Caesar Salad",
-    category: "appetizers",
-    price: 12.5,
-    image: "/caesar-salad.png",
-    available: true,
-    popular: true,
-  },
-  {
-    id: "2",
-    name: "意式肉酱面",
-    nameEn: "Spaghetti Bolognese",
-    category: "pasta",
-    price: 16.8,
-    image: "/spaghetti-bolognese.png",
-    available: true,
-    popular: true,
-  },
-  {
-    id: "3",
-    name: "玛格丽特披萨",
-    nameEn: "Margherita Pizza",
-    category: "pizza",
-    price: 14.5,
-    image: "/margherita-pizza.png",
-    available: true,
-  },
-  {
-    id: "4",
-    name: "烤三文鱼",
-    nameEn: "Grilled Salmon",
-    category: "main",
-    price: 28.9,
-    image: "/grilled-salmon-plate.png",
-    available: true,
-    popular: true,
-  },
-  {
-    id: "5",
-    name: "提拉米苏",
-    nameEn: "Tiramisu",
-    category: "desserts",
-    price: 8.5,
-    image: "/classic-tiramisu.png",
-    available: true,
-  },
-  {
-    id: "6",
-    name: "意式浓缩咖啡",
-    nameEn: "Espresso",
-    category: "drinks",
-    price: 3.5,
-    image: "/espresso-coffee.jpg",
-    available: true,
-  },
-  {
-    id: "7",
-    name: "海鲜意面",
-    nameEn: "Seafood Pasta",
-    category: "pasta",
-    price: 22.8,
-    image: "/seafood-pasta.png",
-    available: true,
-    spicy: 1,
-  },
-  {
-    id: "8",
-    name: "四季披萨",
-    nameEn: "Quattro Stagioni",
-    category: "pizza",
-    price: 18.5,
-    image: "/quattro-stagioni-pizza.jpg",
-    available: true,
-  },
-  {
-    id: "9",
-    name: "牛排",
-    nameEn: "Ribeye Steak",
-    category: "main",
-    price: 35.9,
-    image: "/grilled-ribeye.png",
-    available: true,
-  },
-  {
-    id: "10",
-    name: "意式奶冻",
-    nameEn: "Panna Cotta",
-    category: "desserts",
-    price: 7.5,
-    image: "/creamy-panna-cotta.png",
-    available: true,
-  },
-  {
-    id: "11",
-    name: "卡布奇诺",
-    nameEn: "Cappuccino",
-    category: "drinks",
-    price: 4.5,
-    image: "/frothy-cappuccino.png",
-    available: true,
-  },
-  {
-    id: "12",
-    name: "布鲁斯凯塔",
-    nameEn: "Bruschetta",
-    category: "appetizers",
-    price: 9.8,
-    image: "/classic-bruschetta.png",
-    available: true,
-  },
-]
+// 分类改为从 /api/menu-items 获取（通过 useMenuData），已移除菜单 mock
 
 type TableStatus = "idle" | "occupied"
 interface TableOption {
@@ -197,10 +75,17 @@ export function POSInterface() {
   const [checkoutDialog, setCheckoutDialog] = useState(false)
   const [discount, setDiscount] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState("cash")
-  const [hangUpDialog, setHangUpDialog] = useState(false)
   const [splitTableDialog, setSplitTableDialog] = useState(false)
   const [mergeTableDialog, setMergeTableDialog] = useState(false)
   const [, setOperationStatus] = useState<"closed" | "open" | "pending">("closed")
+
+  // 菜单与分类（仅来自 API，不再使用 mock 回退）
+  const {
+    items: menuItems,
+    categories: menuCategories,
+    loading: loadingMenu,
+    error: menuError,
+  } = useMenuData()
 
   // 加载桌台列表
   async function loadTables() {
@@ -242,7 +127,7 @@ export function POSInterface() {
     }
   }, [byIdParam, tableNumberParam, tables])
 
-  const filteredItems = mockMenuItems.filter((item) => {
+  const filteredItems = menuItems.filter((item) => {
     const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -387,7 +272,7 @@ export function POSInterface() {
       </div>
 
       {/* Right side - Cart */}
-      <Card className="w-96 flex flex-col bg-card border-border">
+      <Card className="w-96 h-full flex flex-col bg-card border-border">
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -469,79 +354,74 @@ export function POSInterface() {
           )}
         </ScrollArea>
 
-        {/* Cart summary */}
-        {cart.length > 0 && (
-          <>
-            <div className="p-4 border-t border-border space-y-3">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">小计</span>
-                  <span className="text-foreground">€{subtotal.toFixed(2)}</span>
-                </div>
-                {discount > 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">折扣 ({discount}%)</span>
-                    <span className="text-destructive">-€{discountAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-foreground">总计</span>
-                  <span className="text-2xl font-bold text-primary">€{total.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* Enhanced operation bar: Add order, add items, split table, merge table, hold order, etc. */}
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  className="gap-1 text-xs bg-transparent"
-                  onClick={() => setHangUpDialog(true)}
-                >
-                  <Hook className="w-3 h-3" />
-                  <span className="hidden sm:inline">挂单</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="gap-1 text-xs bg-transparent"
-                  onClick={() => setSplitTableDialog(true)}
-                >
-                  <Split className="w-3 h-3" />
-                  <span className="hidden sm:inline">拆台</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="gap-1 text-xs bg-transparent"
-                  onClick={() => setMergeTableDialog(true)}
-                >
-                  <Copy className="w-3 h-3" />
-                  <span className="hidden sm:inline">并台</span>
-                </Button>
-                <Button variant="outline" className="gap-2 bg-transparent" onClick={() => setCart([])}>
-                  <Trash2 className="w-4 h-4" />
-                  清空
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="secondary"
-                  className="gap-2"
-                  onClick={() => {
-                    /* Add item logic */
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  加菜
-                </Button>
-                <Button className="gap-2" onClick={() => setCheckoutDialog(true)} disabled={!selectedTable}>
-                  <Receipt className="w-4 h-4" />
-                  结账
-                </Button>
-              </div>
+        {/* Cart summary & actions: 固定底部，始终可见 */}
+        <div className="mt-auto p-4 border-t border-border space-y-3 bg-card">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">小计</span>
+              <span className="text-foreground">€{subtotal.toFixed(2)}</span>
             </div>
-          </>
-        )}
+            {discount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">折扣 ({discount}%)</span>
+                <span className="text-destructive">-€{discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <Separator />
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-foreground">总计</span>
+              <span className="text-2xl font-bold text-primary">€{total.toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* 第一排：加菜 + 结账 */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="secondary"
+              className="gap-2 bg-green-600 text-white hover:bg-green-700"
+              onClick={() => {
+                /* Add item logic */
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              加菜
+            </Button>
+            <Button
+              className="gap-2 bg-yellow-500 text-black hover:bg-yellow-600 disabled:!bg-yellow-500 disabled:!text-black disabled:!opacity-100 disabled:cursor-not-allowed"
+              onClick={() => setCheckoutDialog(true)}
+              disabled={!selectedTable}
+            >
+              <Receipt className="w-4 h-4" />
+              结账
+            </Button>
+          </div>
+
+          {/* 第二排：拆台 + 并台；第三排：清空 */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              className="gap-1 text-xs bg-transparent"
+              onClick={() => setSplitTableDialog(true)}
+            >
+              <Split className="w-3 h-3" />
+              <span className="hidden sm:inline">拆台</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-1 text-xs bg-transparent"
+              onClick={() => setMergeTableDialog(true)}
+            >
+              <Copy className="w-3 h-3" />
+              <span className="hidden sm:inline">并台</span>
+            </Button>
+            <Button variant="destructive" className="gap-2" onClick={() => setCart([])}>
+              <Trash2 className="w-4 h-4" />
+              清空
+            </Button>
+            {/* 占位，保持网格对齐 */}
+            <div></div>
+          </div>
+        </div>
       </Card>
 
       {/* Checkout Dialog */}
@@ -640,38 +520,7 @@ export function POSInterface() {
         </DialogContent>
       </Dialog>
 
-      {/* Hold Order Dialog */}
-      <Dialog open={hangUpDialog} onOpenChange={setHangUpDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>挂单</DialogTitle>
-            <DialogDescription>将当前订单暂存，稍后可恢复继续操作</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="p-4 bg-accent/10 rounded-lg border border-accent/50">
-              <p className="text-sm text-foreground">
-                待挂单项目数：<span className="font-bold">{cart.length}</span>
-              </p>
-              <p className="text-sm text-foreground">
-                总金额：<span className="font-bold text-primary">€{total.toFixed(2)}</span>
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setHangUpDialog(false)}>
-              取消
-            </Button>
-            <Button
-              onClick={() => {
-                setHangUpDialog(false)
-                setCart([])
-              }}
-            >
-              确认挂单
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* removed: Hold Order Dialog */}
 
       {/* Split Table Dialog */}
       <Dialog open={splitTableDialog} onOpenChange={setSplitTableDialog}>
