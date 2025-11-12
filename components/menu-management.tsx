@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useMenuData } from "@/hooks/useMenuData"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -52,241 +53,50 @@ interface Category {
 
 const DEFAULT_CATEGORIES: Category[] = [{ id: "all", name: "全部菜品", count: 0 }]
 
-const menuCategories = [
-  { id: "all", name: "全部菜品", count: 12 },
-  { id: "appetizers", name: "开胃菜", count: 2 },
-  { id: "main", name: "主菜", count: 2 },
-  { id: "pasta", name: "意面", count: 2 },
-  { id: "pizza", name: "披萨", count: 2 },
-  { id: "desserts", name: "甜品", count: 2 },
-  { id: "drinks", name: "饮品", count: 2 },
-]
-
-const mockMenuItems: MenuItem[] = [
-  {
-    id: "1",
-    name: "凯撒沙拉",
-    nameEn: "Caesar Salad",
-    category: "appetizers",
-    price: 12.5,
-    cost: 4.2,
-    description: "新鲜罗马生菜配凯撒酱汁和帕玛森芝士",
-    image: "/caesar-salad.png",
-    available: true,
-    popular: true,
-    allergens: ["乳制品", "鸡蛋"],
-    sales: 156,
-    revenue: 1950,
-  },
-  {
-    id: "2",
-    name: "意式肉酱面",
-    nameEn: "Spaghetti Bolognese",
-    category: "pasta",
-    price: 16.8,
-    cost: 5.6,
-    description: "经典意大利肉酱配新鲜意面",
-    image: "/spaghetti-bolognese.png",
-    available: true,
-    popular: true,
-    sales: 203,
-    revenue: 3410.4,
-  },
-  {
-    id: "3",
-    name: "玛格丽特披萨",
-    nameEn: "Margherita Pizza",
-    category: "pizza",
-    price: 14.5,
-    cost: 4.8,
-    description: "番茄酱、新鲜马苏里拉芝士和罗勒",
-    image: "/margherita-pizza.png",
-    available: true,
-    allergens: ["麸质", "乳制品"],
-    sales: 178,
-    revenue: 2581,
-  },
-  {
-    id: "4",
-    name: "烤三文鱼",
-    nameEn: "Grilled Salmon",
-    category: "main",
-    price: 28.9,
-    cost: 12.5,
-    description: "挪威三文鱼配时令蔬菜",
-    image: "/grilled-salmon-plate.png",
-    available: true,
-    popular: true,
-    allergens: ["鱼类"],
-    sales: 134,
-    revenue: 3873.6,
-  },
-  {
-    id: "5",
-    name: "提拉米苏",
-    nameEn: "Tiramisu",
-    category: "desserts",
-    price: 8.5,
-    cost: 2.8,
-    description: "经典意式咖啡甜点",
-    image: "/classic-tiramisu.png",
-    available: true,
-    allergens: ["麸质", "乳制品", "鸡蛋"],
-    sales: 189,
-    revenue: 1606.5,
-  },
-  {
-    id: "6",
-    name: "意式浓缩咖啡",
-    nameEn: "Espresso",
-    category: "drinks",
-    price: 3.5,
-    cost: 0.8,
-    description: "浓郁的意式咖啡",
-    image: "/espresso-coffee.jpg",
-    available: true,
-    sales: 312,
-    revenue: 1092,
-  },
-  {
-    id: "7",
-    name: "海鲜意面",
-    nameEn: "Seafood Pasta",
-    category: "pasta",
-    price: 22.8,
-    cost: 9.2,
-    description: "新鲜海鲜配意面",
-    image: "/seafood-pasta.png",
-    available: true,
-    spicy: 1,
-    allergens: ["麸质", "海鲜"],
-    sales: 98,
-    revenue: 2234.4,
-  },
-  {
-    id: "8",
-    name: "四季披萨",
-    nameEn: "Quattro Stagioni",
-    category: "pizza",
-    price: 18.5,
-    cost: 6.5,
-    description: "四种口味的经典披萨",
-    image: "/quattro-stagioni-pizza.jpg",
-    available: false,
-    allergens: ["麸质", "乳制品"],
-    sales: 67,
-    revenue: 1239.5,
-  },
-  {
-    id: "9",
-    name: "牛排",
-    nameEn: "Ribeye Steak",
-    category: "main",
-    price: 35.9,
-    cost: 16.8,
-    description: "澳洲肋眼牛排配薯条",
-    image: "/grilled-ribeye.png",
-    available: true,
-    sales: 89,
-    revenue: 3195.1,
-  },
-  {
-    id: "10",
-    name: "意式奶冻",
-    nameEn: "Panna Cotta",
-    category: "desserts",
-    price: 7.5,
-    cost: 2.2,
-    description: "香滑奶冻配浆果酱",
-    image: "/creamy-panna-cotta.png",
-    available: true,
-    allergens: ["乳制品"],
-    sales: 145,
-    revenue: 1087.5,
-  },
-  {
-    id: "11",
-    name: "卡布奇诺",
-    nameEn: "Cappuccino",
-    category: "drinks",
-    price: 4.5,
-    cost: 1.2,
-    description: "经典意式咖啡配奶泡",
-    image: "/frothy-cappuccino.png",
-    available: true,
-    sales: 267,
-    revenue: 1201.5,
-  },
-  {
-    id: "12",
-    name: "布鲁斯凯塔",
-    nameEn: "Bruschetta",
-    category: "appetizers",
-    price: 9.8,
-    cost: 3.2,
-    description: "烤面包配番茄和罗勒",
-    image: "/classic-bruschetta.png",
-    available: true,
-    allergens: ["麸质"],
-    sales: 123,
-    revenue: 1205.4,
-  },
-]
-
 export function MenuManagement() {
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const { items: fetchedItems } = useMenuData()
   const [items, setItems] = useState<MenuItem[]>([])
   const [dynamicCategories, setDynamicCategories] = useState<Category[]>(DEFAULT_CATEGORIES)
   const [editDialog, setEditDialog] = useState(false)
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null)
   const [isNewItem, setIsNewItem] = useState(false)
 
+  // 同步 Hook 数据到本地可编辑状态
   useEffect(() => {
-    let aborted = false
-    const load = async () => {
-      try {
-        const res = await fetch("/api/menu-items", { cache: "no-store" })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = await res.json()
-        if (aborted) return
-        const fetched: MenuItem[] = Array.isArray(data?.items)
-          ? data.items.map((i: any) => ({
-              id: String(i.id),
-              name: String(i.name ?? ""),
-              nameEn: String(i.nameEn ?? ""),
-              category: String(i.category ?? "uncategorized"),
-              price: typeof i.price === "number" ? i.price : Number(i.price ?? 0),
-              image: String(i.image ?? ""),
-              available: Boolean(i.available ?? true),
-              popular: Boolean(i.popular ?? false),
-              spicy: Number(i.spicy ?? 0),
-            }))
-          : []
-        setItems(fetched)
+    setItems(
+      Array.isArray(fetchedItems)
+        ? fetchedItems.map((i: any) => ({
+            id: String(i.id),
+            name: String(i.name ?? ""),
+            nameEn: String(i.nameEn ?? ""),
+            category: String(i.category ?? "uncategorized"),
+            price: typeof i.price === "number" ? i.price : Number(i.price ?? 0),
+            image: String(i.image ?? ""),
+            available: Boolean(i.available ?? true),
+            popular: Boolean(i.popular ?? false),
+            spicy: Number(i.spicy ?? 0),
+          }))
+        : [],
+    )
+  }, [fetchedItems])
 
-        const counts = new Map<string, number>()
-        for (const it of fetched) counts.set(it.category, (counts.get(it.category) ?? 0) + 1)
-        const ids = Array.from(counts.keys())
-        const cats: Category[] = [
-          { id: "all", name: "全部菜品", count: fetched.length },
-          ...ids.map((id) => ({ id, name: id, count: counts.get(id) ?? 0 })),
-        ]
-        setDynamicCategories(cats)
+  // 基于当前 items 计算分类与计数
+  useEffect(() => {
+    const counts = new Map<string, number>()
+    for (const it of items) counts.set(it.category, (counts.get(it.category) ?? 0) + 1)
+    const ids = Array.from(counts.keys())
+    const cats: Category[] = [
+      { id: "all", name: "全部菜品", count: items.length },
+      ...ids.map((id) => ({ id, name: id, count: counts.get(id) ?? 0 })),
+    ]
+    setDynamicCategories(cats)
 
-        // 保证选中分类有效
-        const valid = new Set(cats.map((c) => c.id))
-        if (!valid.has(selectedCategory)) setSelectedCategory("all")
-      } catch (e) {
-        setItems([])
-        setDynamicCategories(DEFAULT_CATEGORIES)
-      }
-    }
-    load()
-    return () => {
-      aborted = true
-    }
-  }, [])
+    // 保证选中分类有效
+    const valid = new Set(cats.map((c) => c.id))
+    if (!valid.has(selectedCategory)) setSelectedCategory("all")
+  }, [items])
 
   const filteredItems = items.filter((item) => {
     const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
