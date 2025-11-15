@@ -26,7 +26,6 @@ export function DashboardContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground text-balance">首页</h1>
-          <p className="text-muted-foreground mt-1">欢迎回来，今天是 2025年11月01日</p>
         </div>
         {/* Quick action buttons removed from header */}
       </div>
