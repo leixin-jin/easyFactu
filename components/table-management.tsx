@@ -10,8 +10,6 @@ import {
   Search,
   Grid3x3,
   List,
-  Clock,
-  Users,
   DollarSign,
   MoreVertical,
   Edit,
@@ -245,6 +243,21 @@ export function TableManagement() {
     return arr
   }, [filteredTables, collator])
 
+  // 按区域分组，保证同一区域的桌台在一起显示
+  const groupedTablesByArea = useMemo(() => {
+    const groups = new Map<string, Table[]>()
+    for (const table of sortedTables) {
+      const key = table.area || "未分区"
+      const existing = groups.get(key)
+      if (existing) {
+        existing.push(table)
+      } else {
+        groups.set(key, [table])
+      }
+    }
+    return Array.from(groups.entries())
+  }, [sortedTables])
+
   // Stats and open-table dialog handlers can be reintroduced when needed
 
   const goToPOS = (table: Table) => {
@@ -341,111 +354,100 @@ export function TableManagement() {
           ))}
         </div>
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {sortedTables.map((table) => {
-            const config = statusConfig[table.status]
-            return (
-              <Card
-                key={table.id}
-                className={`p-4 bg-card border-2 transition-all cursor-pointer hover:shadow-lg ${
-                  table.status === "idle"
-                    ? "border-primary/30 hover:border-primary"
-                    : "border-destructive/30 hover:border-destructive"
-                }`}
-                onClick={() => goToPOS(table)}
-              >
-                <div className="space-y-3">
-                  {/* Header */}
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-xl font-bold text-foreground">{table.number}</h3>
-                      <p className="text-xs text-muted-foreground">{table.area}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className={`${config.bgColor} ${config.textColor} border-0`}>
-                        {config.label}
-                      </Badge>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {table.status === "idle" && (
-                            <DropdownMenuItem onClick={() => goToPOS(table)}>
-                              <UserPlus className="w-4 h-4 mr-2" />
-                              开台
-                            </DropdownMenuItem>
-                          )}
-                          {table.status === "occupied" && (
-                            <>
-                              <DropdownMenuItem onClick={() => handleTableAction(table, "checkout")}>
-                                <Receipt className="w-4 h-4 mr-2" />
-                                结账
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleTableAction(table, "transfer")}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                转台
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                          {/* Locked state removed */}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleTableAction(table, "edit")}>
-                            <Edit className="w-4 h-4 mr-2" />
-                            编辑
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleTableAction(table, "delete")}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            删除
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
+        <div className="space-y-6">
+          {groupedTablesByArea.map(([areaName, areaTables]) => (
+            <div key={areaName} className="space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground px-1">
+                {areaName || "未分区"}
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {areaTables.map((table) => {
+                  const config = statusConfig[table.status]
+                  return (
+                    <Card
+                      key={table.id}
+                      className={`p-4 bg-card border-2 transition-all cursor-pointer hover:shadow-lg ${
+                        table.status === "idle"
+                          ? "border-primary/30 hover:border-primary"
+                          : "border-destructive/30 hover:border-destructive"
+                      }`}
+                      onClick={() => goToPOS(table)}
+                    >
+                      <div className="space-y-3">
+                        {/* Header */}
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="text-xl font-bold text-foreground">{table.number}</h3>
+                            <p className="text-xs text-muted-foreground">{table.area}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className={`${config.bgColor} ${config.textColor} border-0`}>
+                              {config.label}
+                            </Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {table.status === "idle" && (
+                                  <DropdownMenuItem onClick={() => goToPOS(table)}>
+                                    <UserPlus className="w-4 h-4 mr-2" />
+                                    开台
+                                  </DropdownMenuItem>
+                                )}
+                                {table.status === "occupied" && (
+                                  <>
+                                    <DropdownMenuItem onClick={() => handleTableAction(table, "checkout")}>
+                                      <Receipt className="w-4 h-4 mr-2" />
+                                      结账
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleTableAction(table, "transfer")}>
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      转台
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                {/* Locked state removed */}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleTableAction(table, "edit")}>
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  编辑
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleTableAction(table, "delete")}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  删除
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
 
-                  {/* Capacity */}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Users className="w-4 h-4" />
-                    <span>
-                      {table.currentGuests ? `${table.currentGuests}/` : ""}
-                      {table.capacity}人
-                    </span>
-                  </div>
+                        {/* Occupied details */}
+                        {table.status === "occupied" && (
+                          <div className="space-y-2 pt-2 border-t border-border">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <DollarSign className="w-3 h-3" />
+                                消费金额
+                              </span>
+                              <span className="text-foreground font-bold">€{table.amount?.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        )}
 
-                  {/* Occupied details */}
-                  {table.status === "occupied" && (
-                    <div className="space-y-2 pt-2 border-t border-border">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {table.startTime}
-                        </span>
-                        <span className="text-foreground font-medium">{table.duration}</span>
+                        {/* Reserved state removed */}
                       </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <DollarSign className="w-3 h-3" />
-                          消费金额
-                        </span>
-                        <span className="text-foreground font-bold">€{table.amount?.toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">服务员</span>
-                        <span className="text-foreground">{table.waiter}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Reserved state removed */}
-                </div>
-              </Card>
-            )
-          })}
+                    </Card>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <Card className="bg-card border-border overflow-hidden">
@@ -456,11 +458,7 @@ export function TableManagement() {
                   <th className="text-left p-4 text-sm font-medium text-muted-foreground">桌号</th>
                   <th className="text-left p-4 text-sm font-medium text-muted-foreground">区域</th>
                   <th className="text-left p-4 text-sm font-medium text-muted-foreground">状态</th>
-                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">容量</th>
-                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">开始时间</th>
-                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">时长</th>
                   <th className="text-left p-4 text-sm font-medium text-muted-foreground">金额</th>
-                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">服务员</th>
                   <th className="text-right p-4 text-sm font-medium text-muted-foreground">操作</th>
                 </tr>
               </thead>
@@ -482,16 +480,9 @@ export function TableManagement() {
                           {config.label}
                         </Badge>
                       </td>
-                      <td className="p-4 text-sm text-muted-foreground">
-                        {table.currentGuests ? `${table.currentGuests}/` : ""}
-                        {table.capacity}人
-                      </td>
-                      <td className="p-4 text-sm text-muted-foreground">{table.startTime || "-"}</td>
-                      <td className="p-4 text-sm text-muted-foreground">{table.duration || "-"}</td>
                       <td className="p-4 text-sm font-medium text-foreground">
                         {table.amount ? `€${table.amount.toFixed(2)}` : "-"}
                       </td>
-                      <td className="p-4 text-sm text-muted-foreground">{table.waiter || "-"}</td>
                       <td className="p-4 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
