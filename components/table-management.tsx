@@ -186,14 +186,21 @@ export function TableManagement() {
       setError(null)
       const res = await fetch("/api/restaurant-tables", { cache: "no-store" })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: Array<{ id: string; number: string; area?: string | null; capacity?: number | null; status: string }> =
-        await res.json()
+      const data: Array<{
+        id: string
+        number: string
+        area?: string | null
+        capacity?: number | null
+        status: string
+        amount?: number | null
+      }> = await res.json()
       const mapped: Table[] = data.map((r) => ({
         id: String(r.id),
         number: r.number,
         area: r.area ?? "",
         capacity: (r.capacity ?? 0) as number,
         status: (r.status as TableStatus) ?? "idle",
+        amount: typeof r.amount === "number" ? r.amount : undefined,
       }))
       setTables(mapped)
     } catch (e: unknown) {

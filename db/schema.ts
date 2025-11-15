@@ -117,11 +117,13 @@ export const orderItems = pgTable(
     quantity: integer("quantity").notNull().default(1),
     price: numeric("price", { precision: 12, scale: 2 }).notNull(),
     notes: text("notes"),
+    batchNo: integer("batch_no").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: false }).defaultNow().notNull(),
   },
   (t) => ({
     orderIdx: index("order_items_order_id_idx").on(t.orderId),
     itemIdx: index("order_items_menu_item_id_idx").on(t.menuItemId),
+    orderBatchIdx: index("order_items_order_id_batch_no_idx").on(t.orderId, t.batchNo),
   }),
 );
 

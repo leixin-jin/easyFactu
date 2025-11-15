@@ -8,6 +8,7 @@
 功能文档索引
 - [Display Restaurant Tables](doc/agents/features/display_table-plan.md)
 - [Display Menu Items](doc/agents/features/display_menu_items-PLAN.md)
+- [点单加减菜与批次显示（order_management）](doc/agents/features/order_management-PLAN.md)
 
 ---
 
@@ -160,3 +161,89 @@
   - `doc/guides/nextjs.instructions.md`
   - `doc/guides/nextjs-tailwind.instructions.md`
 - 模板：`doc/agents/FEATURES_Template.md`
+
+---
+
+# Run: Order Management
+
+说明
+- 目标：为 POS 点单页面提供加菜/减菜能力，并将同一桌台多次加菜按批次分组显示与配色，同时写入 `orders` / `order_items` 表，保持现有 UI 布局和尺寸不变。
+- 阅读规范：`doc/guides/nextjs.instructions.md`、`doc/guides/nextjs-tailwind.instructions.md`
+- 参考功能说明：`doc/agents/features/order_management-PLAN.md`
+
+注意
+- 不改变 `app/pos/page.tsx` 与 `components/pos-interface.tsx` 的整体布局尺寸，仅在“当前订单”区域内补充批次与加减菜逻辑。
+- 仅在 POS 点单页面内实现批次展示、加菜与减菜逻辑；账务流水与结算流程仍由其它功能负责。
+- 每个任务独立、≤2 小时、可直接提交；提示词内含 `use context7`/`ultrathink` 时可查阅外部文档。
+
+### Task 1: 设计批次模型与 DB 字段
+**预计时间**: 1小时  
+**依赖**: 无  
+
+**AI 提示词**:  
+你是一位资深的后端与数据库工程师，熟悉 Drizzle ORM 与 PostgreSQL。请在 easyFactu 项目中为点单加菜功能设计“批次”模型：在不破坏现有 `orders` / `order_items` 逻辑的前提下，为 `order_items` 增加表示批次的字段（例如 `batch_no`），并在 `db/schema.ts` 中完成定义、生成迁移（`pnpm drizzle:generate`）以及推送（`pnpm drizzle:push`）。请给出字段类型、默认值与索引建议，并考虑后续查询一个桌台的订单时如何按 `order_id` + `batch_no` 排序。完成后更新相关文档注释。必要时可参考 Drizzle 官方文档（use context7）。  
+
+### Task 2: 实现订单创建与批次写入 API
+**预计时间**: 2小时  
+**依赖**: Task 1  
+
+**AI 提示词**:  
+你是一位资深的 Next.js + TypeScript 后端工程师，请在 `app/api/orders/route.ts` 中实现 `POST /api/orders` 路由，用于为指定桌台创建订单或加菜批次。使用 Drizzle ORM 操作 `orders` 与 `order_items` 表，根据请求体中的 `tableId` 与菜品数组创建记录，并为每一条 `order_items` 生成正确的 `batch_no`。注意：需要支持同一桌台多次加菜，新的批次应在已有批次最大值基础上递增。请添加基本参数校验（可以使用 `zod`），保证错误时返回合适的 HTTP 状态码。完成后，返回当前桌台的订单信息及按批次分组的明细列表。必要时 use context7 查询 Drizzle ORM 插入与事务示例。  
+
+### Task 3: 实现按桌台查询订单与批次 API
+**预计时间**: 1小时  
+**依赖**: Task 2  
+
+**AI 提示词**:  
+你是一位熟悉 REST 设计与 Drizzle ORM 的工程师，请在 `app/api/orders/route.ts` 中实现 `GET /api/orders?tableId=<id>` 接口，返回指定桌台当前开放订单（`status = 'open'`）以及全部 `order_items`，并在响应 JSON 中按 `batch_no` 和创建时间排序与分组，方便前端直接渲染为“批次 + 菜品列表”的结构。请确保查询性能（合理使用索引），同时在桌台无订单时返回空列表而不是错误。  
+
+### Task 4: 调整 POSInterface 购物车/订单状态结构
+**预计时间**: 2小时  
+**依赖**: Task 3  
+
+**AI 提示词**:  
+你是一位资深的前端工程师，熟悉 Next.js App Router 与 React hooks。请在 `components/pos-interface.tsx` 中，将当前基于 `cart: CartItem[]` 的购物车结构扩展为“按批次的订单视图”，例如 `batches: Array<{ batchNo: number; items: CartItem[] }>`，并保证：  
+1）现有布局与尺寸（左侧菜单区域 + 右侧宽度 `w-96` 的订单卡片）保持不变；  
+2）点击菜单卡片“加号”或“加菜”按钮时，会在当前“临时选中批次”中累加数量；  
+3）提交时调用 `POST /api/orders`，并根据返回数据更新本地 `batches` 状态。  
+请重用现有 UI 组件（Card、Badge、Button 等），不要扩大页面尺寸或增加全屏弹窗。  
+
+### Task 5: 在 UI 中实现批次分组与两种配色
+**预计时间**: 1.5小时  
+**依赖**: Task 4  
+
+**AI 提示词**:  
+你是一位熟悉 Tailwind 与 UX 设计的前端工程师。请在 `components/pos-interface.tsx` 的“当前订单”区域中，将订单展示调整为：按批次分组的列表。第 1 批使用当前默认样式，第 2 批及之后使用另一种但风格统一的颜色（例如背景、边框或批次标签颜色略有区别），同时在每个批次前增加“第 N 批加菜”的小标题或分隔条。注意所有修改必须局限在现有订单卡片区域内部，不得改变整体布局的宽高与主容器的 Tailwind 类。  
+
+### Task 6: 实现减菜与清空菜品逻辑（前后端联动）
+**预计时间**: 1.5小时  
+**依赖**: Task 4  
+
+**AI 提示词**:  
+你是一位全栈工程师，请在 `components/pos-interface.tsx` 中完善“-”与“垃圾桶”按钮的行为：  
+1）“-” 按钮：将当前批次中对应菜品的数量减 1，减至 0 时移除该行；  
+2）“垃圾桶”按钮：直接从当前批次中移除该菜品；  
+3）在需要持久化到数据库的场景中，调用适当的 API（例如 `PATCH /api/orders/[id]` 或重新提交批次）同步更新 `order_items`。  
+请保持 UI 尺寸不变，并为失败的网络请求提供轻量级错误提示（如 Toast 或顶部提示条），避免弹出全屏错误。  
+
+### Task 7: 联调与文档更新
+**预计时间**: 1小时  
+**依赖**: Task 5, Task 6  
+
+**AI 提示词**:  
+你是一位负责交付质量的全栈工程师。请在完成前述实现后，联调前后端：  
+1）验证在不同桌台、多次加菜、减菜、清空菜品的情况下，`orders` 与 `order_items` 中数据正确，批次号连续且排序正确；  
+2）确保 POS 页面布局与尺寸与原先一致；  
+3）根据 `doc/guides/nextjs.instructions.md` 与 `doc/guides/nextjs-tailwind.instructions.md` 的规范检查代码；  
+4）在 `doc/agents/features/FEATURES.md` 或相关文档中增加本功能的链接说明，并在 PR 描述中附上关键截图。必要时使用 use context7 查阅 Next.js 与 Drizzle 最新实践。  
+
+## Links
+- 功能说明：`doc/agents/features/order_management-PLAN.md`  
+- 规范：  
+  - `doc/guides/nextjs.instructions.md`  
+  - `doc/guides/nextjs-tailwind.instructions.md`  
+- 相关代码：  
+  - `components/pos-interface.tsx`  
+  - `app/pos/page.tsx`  
+  - `app/api/orders/route.ts`  
+  - `db/schema.ts`  
