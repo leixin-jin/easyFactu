@@ -1,0 +1,2 @@
+ALTER TABLE "order_items" ADD COLUMN "batch_no" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+CREATE INDEX "order_items_order_id_batch_no_idx" ON "order_items" USING btree ("order_id","batch_no");

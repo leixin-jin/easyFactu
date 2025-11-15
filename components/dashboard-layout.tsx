@@ -16,7 +16,6 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ThemeSwitcher } from "@/components/theme-switcher"
 import { LogoutButton } from "@/components/logout-button"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
@@ -121,7 +120,6 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2">
-              <ThemeSwitcher />
               <Button variant="ghost" size="icon" className="relative">
                 <Bell className="w-5 h-5" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
