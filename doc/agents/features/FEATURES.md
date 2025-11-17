@@ -9,6 +9,7 @@
 - [Display Restaurant Tables](doc/agents/features/display_table-plan.md)
 - [Display Menu Items](doc/agents/features/display_menu_items-PLAN.md)
 - [点单加减菜与批次显示（order_management）](doc/agents/features/order_management-PLAN.md)
+- [结账与交易落库（transaction_backend）](doc/agents/features/transaction_backend-PLAN.md)
 
 ---
 

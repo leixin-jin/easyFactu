@@ -31,7 +31,7 @@ import {
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useMenuData } from "@/hooks/useMenuData"
 import { useToast } from "@/hooks/use-toast"
@@ -88,6 +88,27 @@ interface AAItemSelection {
   quantity: number
 }
 
+interface ReceiptItem {
+  name: string
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+}
+
+interface CheckoutReceiptData {
+  orderId: string
+  tableNumber: string
+  paidAt: string
+  paymentMethod: string
+  subtotal: number
+  discountPercent: number
+  discountAmount: number
+  total: number
+  receivedAmount: number
+  changeAmount: number
+  items: ReceiptItem[]
+}
+
 // 分类改为从 /api/menu-items 获取（通过 useMenuData），已移除菜单 mock
 
 type TableStatus = "idle" | "occupied"
@@ -107,6 +128,7 @@ const mockTables: TableOption[] = [
 ]
 
 export function POSInterface() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const byIdParam = searchParams.get("tableId") || ""
   const tableNumberParam = searchParams.get("tableNumber") || ""
@@ -130,6 +152,7 @@ export function POSInterface() {
   const [clearingOrder, setClearingOrder] = useState(false)
 
   const [checkoutDialog, setCheckoutDialog] = useState(false)
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [discount, setDiscount] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [splitTableDialog, setSplitTableDialog] = useState(false)
@@ -146,6 +169,8 @@ export function POSInterface() {
   } | null>(null)
   const [aaQuantityInput, setAaQuantityInput] = useState(1)
   const [, setOperationStatus] = useState<"closed" | "open" | "pending">("closed")
+  const [printData, setPrintData] = useState<CheckoutReceiptData | null>(null)
+  const [isPrinting, setIsPrinting] = useState(false)
 
   const { toast } = useToast()
 
@@ -183,6 +208,19 @@ export function POSInterface() {
   useEffect(() => {
     loadTables()
   }, [])
+
+  // 结账成功后在当前窗口内触发打印
+  useEffect(() => {
+    if (!isPrinting || !printData) return
+    const timer = setTimeout(() => {
+      if (typeof window !== "undefined") {
+        window.print()
+      }
+      setIsPrinting(false)
+      router.push("/tables")
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [isPrinting, printData, router])
 
   // 加载指定桌台当前开放订单及批次
   async function loadOrderForTable(tableId: string) {
@@ -444,35 +482,194 @@ export function POSInterface() {
     }
   }
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
+    if (checkoutLoading) return
+
+    if (!selectedTable) {
+      toast({
+        title: "未选择桌台",
+        description: "请先在右侧选择一个桌台，再进行结账。",
+        variant: "destructive",
+      })
+      return
+    }
+
     const isAA = aaMode && aaItems.length > 0
-    console.log("[v0] Processing checkout:", {
-      mode: isAA ? "AA" : "full",
-      cart,
-      selectedTable,
-      paymentMethod,
-      currentOrder,
-      batches,
-      aaItems: isAA ? aaItems : undefined,
-      totals: {
-        subtotal: isAA ? checkoutSubtotal : subtotal,
-        discount,
-        discountAmount: isAA ? checkoutDiscountAmount : discountAmount,
-        total: isAA ? checkoutTotal : total,
-        receivedAmount,
-        changeAmount: isAA ? receivedAmount - checkoutTotal : receivedAmount - total,
-      },
-    })
-    setCheckoutDialog(false)
-    setAaMode(false)
-    setAaItems([])
-    setAaQuantityDialogOpen(false)
-    setAaQuantityTarget(null)
-    setAaQuantityInput(1)
-    setReceivedAmount(0)
-    setCart([])
-    setSelectedTable("")
-    setDiscount(0)
+
+    if (isAA) {
+      toast({
+        title: "AA 结账暂未接入",
+        description: "当前版本仅支持整单结账，请使用整单结账完成本次支付。",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!currentOrder && cart.length === 0) {
+      toast({
+        title: "当前订单为空",
+        description: "请先添加菜品并下单后再进行结账。",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const checkoutSubtotalValue = checkoutSubtotal
+    const checkoutDiscountAmountValue = checkoutDiscountAmount
+    const checkoutTotalValue = checkoutTotal
+
+    const effectiveReceived =
+      receivedAmount != null && receivedAmount > 0
+        ? receivedAmount
+        : checkoutTotalValue
+
+    if (checkoutTotalValue <= 0) {
+      toast({
+        title: "应付金额为 0",
+        description: "请确认订单金额后再结账。",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (effectiveReceived < checkoutTotalValue) {
+      toast({
+        title: "已收金额不足",
+        description: "已收金额不能小于应付金额。",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const itemsForReceipt: ReceiptItem[] = aggregatedItems.map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.price,
+      totalPrice: item.price * item.quantity,
+    }))
+
+    try {
+      setCheckoutLoading(true)
+      setOrderError(null)
+
+      let orderId = currentOrder?.id ?? null
+
+      // 如有未提交的草稿批次，先自动提交
+      if (cart.length > 0) {
+        const res = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tableId: selectedTable,
+            paymentMethod,
+            items: cart.map((item) => ({
+              menuItemId: item.id,
+              quantity: item.quantity,
+              price: item.price,
+              notes: item.notes ?? undefined,
+            })),
+          }),
+        })
+        const data = await res.json().catch(() => null)
+        if (!res.ok) {
+          const message = (data && (data.error as string)) || `下单失败 (${res.status})`
+          throw new Error(message)
+        }
+        setCurrentOrder(data.order ?? null)
+        setBatches(data.batches ?? [])
+        setCart([])
+        orderId = data.order?.id ?? orderId
+      }
+
+      if (!orderId) {
+        const message = "未找到可结账的订单"
+        setOrderError(message)
+        toast({
+          title: "结账失败",
+          description: message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const checkoutRes = await fetch("/api/orders/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableId: selectedTable,
+          orderId,
+          mode: "full",
+          paymentMethod,
+          discountPercent: discount,
+          clientSubtotal: checkoutSubtotalValue,
+          clientTotal: checkoutTotalValue,
+          receivedAmount: effectiveReceived,
+          changeAmount: effectiveReceived - checkoutTotalValue,
+        }),
+      })
+
+      const checkoutData = await checkoutRes.json().catch(() => null)
+
+      if (!checkoutRes.ok) {
+        const message =
+          (checkoutData && (checkoutData.error as string)) || `结账失败 (${checkoutRes.status})`
+        setOrderError(message)
+        toast({
+          title: "结账失败",
+          description: message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const tableNumber =
+        tables.find((t) => t.id === selectedTable)?.number || tableNumberParam || ""
+
+      // 结账成功：关闭弹窗并清理本地状态
+      setCurrentOrder(null)
+      setBatches([])
+      setCheckoutDialog(false)
+      setAaMode(false)
+      setAaItems([])
+      setAaQuantityDialogOpen(false)
+      setAaQuantityTarget(null)
+      setAaQuantityInput(1)
+      setReceivedAmount(0)
+      setDiscount(0)
+
+      // 刷新桌台列表，确保状态变为 idle
+      await loadTables()
+
+      setPrintData({
+        orderId,
+        tableNumber,
+        paidAt: new Date().toLocaleString(),
+        paymentMethod,
+        subtotal: checkoutSubtotalValue,
+        discountPercent: discount,
+        discountAmount: checkoutDiscountAmountValue,
+        total: checkoutTotalValue,
+        receivedAmount: effectiveReceived,
+        changeAmount: Math.max(0, effectiveReceived - checkoutTotalValue),
+        items: itemsForReceipt,
+      })
+      setIsPrinting(true)
+
+      toast({
+        title: "结账成功",
+        description: "订单已结账并生成交易记录，正在准备打印小票。",
+      })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "结账失败"
+      setOrderError(message)
+      toast({
+        title: "结账失败",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setCheckoutLoading(false)
+    }
   }
 
   const handleClearOrder = async () => {
@@ -576,7 +773,8 @@ export function POSInterface() {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex gap-4">
+    <>
+      <div className="h-[calc(100vh-8rem)] flex gap-4 print:hidden">
       {/* Left side - Menu */}
       <div className="flex-1 flex flex-col gap-4 overflow-hidden">
         {/* Header */}
@@ -1258,12 +1456,26 @@ export function POSInterface() {
               </div>
 
               <DialogFooter className="pt-4 px-0 shrink-0">
-                <Button variant="outline" onClick={() => setCheckoutDialog(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setCheckoutDialog(false)}
+                  disabled={checkoutLoading}
+                >
                   取消
                 </Button>
-                <Button onClick={handleCheckout} className="gap-2">
-                  <Printer className="w-4 h-4" />
-                  确认并打印
+                <Button
+                  onClick={handleCheckout}
+                  className="gap-2"
+                  disabled={checkoutLoading || checkoutTotal <= 0}
+                >
+                  {checkoutLoading ? (
+                    "处理中..."
+                  ) : (
+                    <>
+                      <Printer className="w-4 h-4" />
+                      确认并打印
+                    </>
+                  )}
                 </Button>
               </DialogFooter>
             </Card>
@@ -1416,5 +1628,98 @@ export function POSInterface() {
         </DialogContent>
       </Dialog>
     </div>
+
+    {printData && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background text-foreground p-4 print:bg-white print:text-black">
+        <Card className="w-full max-w-sm border-border shadow-lg print:shadow-none print:border-0">
+          <div className="p-4 space-y-2">
+            <div className="text-center">
+              <h2 className="text-xl font-bold">结账小票</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                桌台 {printData.tableNumber} · 订单号 {printData.orderId}
+              </p>
+            </div>
+            <Separator />
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span>时间</span>
+                <span>{printData.paidAt}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>支付方式</span>
+                <span>{printData.paymentMethod === "card" ? "刷卡" : "现金"}</span>
+              </div>
+            </div>
+            <Separator />
+            <div className="max-h-60 overflow-y-auto">
+              {printData.items.map((item) => (
+                <div key={item.name} className="flex justify-between text-xs py-1">
+                  <div className="flex-1 pr-2">
+                    <div className="flex justify-between">
+                      <span className="truncate max-w-[8rem]">{item.name}</span>
+                      <span>x{item.quantity}</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      单价 €{item.unitPrice.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-right text-xs font-medium">
+                    €{item.totalPrice.toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Separator />
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span>小计</span>
+                <span>€{printData.subtotal.toFixed(2)}</span>
+              </div>
+              {printData.discountPercent > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span>折扣 ({printData.discountPercent}%)</span>
+                  <span>-€{printData.discountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold">
+                <span>应付金额</span>
+                <span>€{printData.total.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span>实收</span>
+                <span>€{printData.receivedAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span>找零</span>
+                <span>€{printData.changeAmount.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="pt-2 flex justify-center gap-2 print:hidden">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPrintData(null)
+                  setIsPrinting(false)
+                }}
+              >
+                返回 POS
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.print()
+                  }
+                }}
+              >
+                重新打印
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    )}
+    </>
   )
 }
