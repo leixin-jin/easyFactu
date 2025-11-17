@@ -16,7 +16,19 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Plus, Minus, Trash2, ShoppingCart, Receipt, Printer, Copy, Split, ArrowLeft } from "lucide-react"
+import {
+  Search,
+  Plus,
+  Minus,
+  Trash2,
+  ShoppingCart,
+  Receipt,
+  Printer,
+  Copy,
+  Split,
+  ArrowLeft,
+  DivideCircle,
+} from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { useSearchParams } from "next/navigation"
@@ -69,6 +81,13 @@ interface CurrentOrderSummary {
   closedAt: string | null
 }
 
+interface AAItemSelection {
+  id: string
+  name: string
+  price: number
+  quantity: number
+}
+
 // 分类改为从 /api/menu-items 获取（通过 useMenuData），已移除菜单 mock
 
 type TableStatus = "idle" | "occupied"
@@ -115,6 +134,17 @@ export function POSInterface() {
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [splitTableDialog, setSplitTableDialog] = useState(false)
   const [mergeTableDialog, setMergeTableDialog] = useState(false)
+  const [receivedAmount, setReceivedAmount] = useState(0)
+  const [aaMode, setAaMode] = useState(false)
+  const [aaItems, setAaItems] = useState<AAItemSelection[]>([])
+  const [aaQuantityDialogOpen, setAaQuantityDialogOpen] = useState(false)
+  const [aaQuantityTarget, setAaQuantityTarget] = useState<{
+    itemId: string
+    name: string
+    maxQuantity: number
+    price: number
+  } | null>(null)
+  const [aaQuantityInput, setAaQuantityInput] = useState(1)
   const [, setOperationStatus] = useState<"closed" | "open" | "pending">("closed")
 
   const { toast } = useToast()
@@ -264,6 +294,33 @@ export function POSInterface() {
   const discountAmount = (subtotal * discount) / 100
   const total = subtotal - discountAmount
 
+  // 订单汇总：用于“菜品 × 数量”显示（结账中间区域）
+  const aggregatedItems = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; quantity: number; price: number }>()
+
+    const addItem = (id: string, name: string, quantity: number, price: number) => {
+      if (!id) return
+      const existing = map.get(id)
+      if (existing) {
+        existing.quantity += quantity
+      } else {
+        map.set(id, { id, name, quantity, price })
+      }
+    }
+
+    batches.forEach((batch) => {
+      batch.items.forEach((item) => {
+        addItem(item.menuItemId, item.name, item.quantity, item.price)
+      })
+    })
+
+    cart.forEach((item) => {
+      addItem(item.id, item.name, item.quantity, item.price)
+    })
+
+    return Array.from(map.values())
+  }, [batches, cart])
+
   const totalItemsCount =
     batches.reduce(
       (batchSum, batch) =>
@@ -272,6 +329,17 @@ export function POSInterface() {
     ) + cart.reduce((sum, item) => sum + item.quantity, 0)
 
   const maxExistingBatchNo = batches.length > 0 ? Math.max(...batches.map((b) => b.batchNo)) : 0
+
+  const aaSubtotal = useMemo(
+    () => aaItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [aaItems],
+  )
+
+  // 结账弹窗右侧金额：AA 模式下只按 AA 分单计算；普通模式下使用整单金额
+  const checkoutSubtotal = aaMode ? aaSubtotal : subtotal
+  const checkoutDiscountAmount = (checkoutSubtotal * discount) / 100
+  const checkoutTotal = checkoutSubtotal - checkoutDiscountAmount
+  const changeAmount = receivedAmount > 0 ? receivedAmount - checkoutTotal : 0
 
   async function updatePersistedItem(itemId: string, type: "decrement" | "remove") {
     if (!selectedTable) {
@@ -377,15 +445,31 @@ export function POSInterface() {
   }
 
   const handleCheckout = () => {
+    const isAA = aaMode && aaItems.length > 0
     console.log("[v0] Processing checkout:", {
+      mode: isAA ? "AA" : "full",
       cart,
       selectedTable,
-      total,
       paymentMethod,
       currentOrder,
       batches,
+      aaItems: isAA ? aaItems : undefined,
+      totals: {
+        subtotal: isAA ? checkoutSubtotal : subtotal,
+        discount,
+        discountAmount: isAA ? checkoutDiscountAmount : discountAmount,
+        total: isAA ? checkoutTotal : total,
+        receivedAmount,
+        changeAmount: isAA ? receivedAmount - checkoutTotal : receivedAmount - total,
+      },
     })
     setCheckoutDialog(false)
+    setAaMode(false)
+    setAaItems([])
+    setAaQuantityDialogOpen(false)
+    setAaQuantityTarget(null)
+    setAaQuantityInput(1)
+    setReceivedAmount(0)
     setCart([])
     setSelectedTable("")
     setDiscount(0)
@@ -431,6 +515,64 @@ export function POSInterface() {
     } finally {
       setClearingOrder(false)
     }
+  }
+
+  const handleAA = () => {
+    if (!selectedTable || (cart.length === 0 && batches.length === 0)) {
+      return
+    }
+    setReceivedAmount(0)
+    setAaMode(true)
+    setAaItems([])
+    setAaQuantityDialogOpen(false)
+    setAaQuantityTarget(null)
+    setAaQuantityInput(1)
+    setCheckoutDialog(true)
+  }
+
+  const handleOpenCheckout = () => {
+    if (!selectedTable) {
+      return
+    }
+    setReceivedAmount(0)
+    setAaMode(false)
+    setAaItems([])
+    setAaQuantityDialogOpen(false)
+    setAaQuantityTarget(null)
+    setAaQuantityInput(1)
+    setCheckoutDialog(true)
+  }
+
+  const handleAggregatedItemClick = (item: {
+    id: string
+    name: string
+    quantity: number
+    price: number
+  }) => {
+    if (!aaMode) {
+      return
+    }
+
+    if (item.quantity <= 1) {
+      setAaItems((prev) => {
+        const existing = prev.find((aa) => aa.id === item.id)
+        if (existing) {
+          return prev.filter((aa) => aa.id !== item.id)
+        }
+        return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }]
+      })
+      return
+    }
+
+    const existing = aaItems.find((aa) => aa.id === item.id)
+    setAaQuantityTarget({
+      itemId: item.id,
+      name: item.name,
+      maxQuantity: item.quantity,
+      price: item.price,
+    })
+    setAaQuantityInput(existing ? existing.quantity : 1)
+    setAaQuantityDialogOpen(true)
   }
 
   return (
@@ -738,7 +880,7 @@ export function POSInterface() {
             </Button>
             <Button
               className="gap-2 bg-yellow-500 text-black hover:bg-yellow-600 disabled:!bg-yellow-500 disabled:!text-black disabled:!opacity-100 disabled:cursor-not-allowed"
-              onClick={() => setCheckoutDialog(true)}
+              onClick={handleOpenCheckout}
               disabled={!selectedTable}
             >
               <Receipt className="w-4 h-4" />
@@ -746,7 +888,28 @@ export function POSInterface() {
             </Button>
           </div>
 
-          {/* 第二排：拆台 + 并台；第三排：清空 */}
+          {/* 第二排：清空 + AA 结账 */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="destructive"
+              className="gap-2"
+              onClick={handleClearOrder}
+              disabled={clearingOrder || (cart.length === 0 && batches.length === 0)}
+            >
+              <Trash2 className="w-4 h-4" />
+              清空
+            </Button>
+            <Button
+              className="gap-2 bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-50"
+              onClick={handleAA}
+              disabled={!selectedTable || (cart.length === 0 && batches.length === 0)}
+            >
+              <DivideCircle className="w-4 h-4" />
+              AA
+            </Button>
+          </div>
+
+          {/* 第三排：拆台 + 并台 */}
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
@@ -764,50 +927,66 @@ export function POSInterface() {
               <Copy className="w-3 h-3" />
               <span className="hidden sm:inline">并台</span>
             </Button>
-            <Button
-              variant="destructive"
-              className="gap-2"
-              onClick={handleClearOrder}
-              disabled={clearingOrder || (cart.length === 0 && batches.length === 0)}
-            >
-              <Trash2 className="w-4 h-4" />
-              清空
-            </Button>
-            {/* 占位，保持网格对齐 */}
-            <div></div>
           </div>
         </div>
       </Card>
 
       {/* Checkout Dialog */}
-      <Dialog open={checkoutDialog} onOpenChange={setCheckoutDialog}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={checkoutDialog}
+        onOpenChange={(open) => {
+          setCheckoutDialog(open)
+          if (!open) {
+            setReceivedAmount(0)
+            setAaMode(false)
+            setAaItems([])
+            setAaQuantityDialogOpen(false)
+            setAaQuantityTarget(null)
+            setAaQuantityInput(1)
+          }
+        }}
+      >
+        {/* 固定高度的三栏结账页面：宽度约为视口 80%，高度不超过视口高度 */}
+        <DialogContent className="w-[80vw] max-w-[80vw] sm:max-w-[80vw] max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>订单结账</DialogTitle>
-            <DialogDescription>桌台: {tables.find((t) => t.id === selectedTable)?.number || tableNumberParam}</DialogDescription>
+            <DialogDescription>
+              桌台: {tables.find((t) => t.id === selectedTable)?.number || tableNumberParam}
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {/* Order summary */}
-            <div className="space-y-2">
-              <Label>订单明细</Label>
-              <Card className="p-3 bg-muted/30 border-border max-h-40 overflow-y-auto">
-                <div className="space-y-2">
+          {/* 三栏布局：左订单明细 / 中间汇总+AA预留 / 右侧结账方式 */}
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3 flex-1 min-h-0 overflow-hidden">
+            {/* 左侧：订单明细（绿色区域，可滚动） */}
+            <Card className="h-full min-h-0 bg-emerald-700/10 border-emerald-500/40 flex flex-col">
+              <div className="px-4 pt-4 pb-2 border-b border-emerald-500/30 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">订单明细</h3>
+                  <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
+                    按批次查看菜品与金额
+                  </p>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 px-4 py-3 overflow-y-auto">
+                <div className="space-y-3 pb-2">
                   {batches.length === 0 && cart.length === 0 ? (
                     <p className="text-sm text-muted-foreground">当前订单为空</p>
                   ) : (
                     <>
                       {batches.map((batch) => (
                         <div key={batch.batchNo} className="space-y-1">
-                          <div className="text-xs font-semibold text-muted-foreground">
+                          <div className="text-xs font-semibold text-emerald-900/80 dark:text-emerald-100/80">
                             {batch.batchNo === 1 ? "第 1 批下单" : `第 ${batch.batchNo} 批加菜`}
                           </div>
                           {batch.items.map((item) => (
-                            <div key={item.id} className="flex items-center justify-between text-sm">
-                              <span className="text-foreground">
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between text-xs sm:text-sm text-emerald-950 dark:text-emerald-50"
+                            >
+                              <span className="truncate max-w-[10rem] sm:max-w-[12rem]">
                                 {item.name} x{item.quantity}
                               </span>
-                              <span className="text-muted-foreground">
+                              <span className="font-medium">
                                 €{(item.price * item.quantity).toFixed(2)}
                               </span>
                             </div>
@@ -816,15 +995,18 @@ export function POSInterface() {
                       ))}
                       {cart.length > 0 && (
                         <div className="space-y-1">
-                          <div className="text-xs font-semibold text-muted-foreground">
+                          <div className="text-xs font-semibold text-emerald-900/80 dark:text-emerald-100/80">
                             第 {maxExistingBatchNo + 1} 批（未提交）
                           </div>
                           {cart.map((item) => (
-                            <div key={item.id} className="flex items-center justify-between text-sm">
-                              <span className="text-foreground">
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between text-xs sm:text-sm text-emerald-950 dark:text-emerald-50"
+                            >
+                              <span className="truncate max-w-[10rem] sm:max-w-[12rem]">
                                 {item.name} x{item.quantity}
                               </span>
-                              <span className="text-muted-foreground">
+                              <span className="font-medium">
                                 €{(item.price * item.quantity).toFixed(2)}
                               </span>
                             </div>
@@ -834,80 +1016,339 @@ export function POSInterface() {
                     </>
                   )}
                 </div>
-              </Card>
-            </div>
-
-            {/* Discount */}
-            <div className="space-y-2">
-              <Label htmlFor="discount">折扣 (%)</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="discount"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={discount}
-                  onChange={(e) => setDiscount(Math.min(100, Math.max(0, Number(e.target.value))))}
-                  className="flex-1"
-                />
-                <Button variant="outline" onClick={() => setDiscount(10)}>
-                  10%
-                </Button>
-                <Button variant="outline" onClick={() => setDiscount(20)}>
-                  20%
-                </Button>
               </div>
-            </div>
+            </Card>
 
-            {/* Payment method */}
-            <div className="space-y-2">
-              <Label htmlFor="payment">支付方式</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger id="payment">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">现金</SelectItem>
-                  <SelectItem value="card">银行卡</SelectItem>
-                  <SelectItem value="wechat">微信支付</SelectItem>
-                  <SelectItem value="alipay">支付宝</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Total */}
-            <Separator />
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">小计</span>
-                <span className="text-foreground">€{subtotal.toFixed(2)}</span>
-              </div>
-              {discount > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">折扣</span>
-                  <span className="text-destructive">-€{discountAmount.toFixed(2)}</span>
+            {/* 中间：订单总结 + AA 区域（上下各占 50%） */}
+            <Card className="h-full min-h-0 grid grid-rows-2">
+              {/* 上：订单总结（菜品 x 数量，可滚动） */}
+              <div className="p-4 border-b border-border flex flex-col min-h-0 overflow-y-auto">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">订单总结</h3>
+                  <p className="text-xs text-muted-foreground">按菜品汇总：菜品 × 数量</p>
                 </div>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-foreground">应付金额</span>
-                <span className="text-2xl font-bold text-primary">€{total.toFixed(2)}</span>
+                <div className="space-y-2 pb-2 pr-2">
+                  {aggregatedItems.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">暂无菜品</p>
+                  ) : (
+                    aggregatedItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`w-full flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                          aaMode
+                            ? "cursor-pointer hover:border-primary hover:bg-primary/5"
+                            : "cursor-default border-border bg-background"
+                        } ${
+                          aaMode && aaItems.some((aa) => aa.id === item.id)
+                            ? "border-pink-500 bg-pink-50"
+                            : "border-border"
+                        }`}
+                        onClick={() => handleAggregatedItemClick(item)}
+                      >
+                        <span className="truncate max-w-[10rem] sm:max-w-[12rem] text-foreground">
+                          {item.name}
+                        </span>
+                        <span className="text-muted-foreground">x{item.quantity}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCheckoutDialog(false)}>
-              取消
-            </Button>
-            <Button onClick={handleCheckout} className="gap-2">
-              <Printer className="w-4 h-4" />
-              确认并打印
-            </Button>
-          </DialogFooter>
+              {/* 下：AA 分单区域 */}
+              <div className="p-4 flex flex-col min-h-0 bg-muted/40">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">AA 分单</h3>
+                    <p className="text-xs text-muted-foreground">
+                      点击上方菜品选择要 AA 的内容
+                    </p>
+                  </div>
+                  {aaMode && aaItems.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setAaItems([])}
+                    >
+                      清空
+                    </Button>
+                  )}
+                </div>
+                {!aaMode ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                      当前为整单结账模式。
+                      <br />
+                      如需按人分账，请关闭弹窗并点击底部「AA」按钮进入 AA 模式。
+                    </p>
+                  </div>
+                ) : aaItems.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                      在上方「订单总结」中点击菜品即可将其加入 AA 分单。
+                      <br />
+                      对于数量大于 1 的菜品，会弹出小窗口让你选择 AA 数量。
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-1">
+                    {aaItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs sm:text-sm"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate max-w-[10rem] sm:max-w-[12rem] text-foreground">
+                              {item.name}
+                            </span>
+                            <span className="font-medium text-foreground">
+                              €{(item.price * item.quantity).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                            <span>
+                              单价 €{item.price.toFixed(2)} × {item.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              className="underline-offset-2 hover:underline"
+                              onClick={() => {
+                                setAaQuantityTarget({
+                                  itemId: item.id,
+                                  name: item.name,
+                                  maxQuantity:
+                                    aggregatedItems.find((agg) => agg.id === item.id)?.quantity ??
+                                    item.quantity,
+                                  price: item.price,
+                                })
+                                setAaQuantityInput(item.quantity)
+                                setAaQuantityDialogOpen(true)
+                              }}
+                            >
+                              修改数量
+                            </button>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="ml-2 h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() =>
+                            setAaItems((prev) => prev.filter((aa) => aa.id !== item.id))
+                          }
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* 右侧：结账方式与支付摘要 */}
+            <Card className="h-full min-h-0 flex flex-col p-4">
+              <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-2">支付方式</h3>
+                  {/* 仅保留现金与刷卡两种方式 */}
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <Button
+                      type="button"
+                      variant={paymentMethod === "cash" ? "default" : "outline"}
+                      className="w-full"
+                      onClick={() => setPaymentMethod("cash")}
+                    >
+                      现金
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={paymentMethod === "card" ? "default" : "outline"}
+                      className="w-full"
+                      onClick={() => setPaymentMethod("card")}
+                    >
+                      刷卡
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="checkout-received">已收金额</Label>
+                  <Input
+                    id="checkout-received"
+                    type="number"
+                    min="0"
+                    value={receivedAmount === 0 ? "" : receivedAmount}
+                    onChange={(e) => {
+                      const value = Number(e.target.value)
+                      if (Number.isNaN(value) || value < 0) {
+                        setReceivedAmount(0)
+                      } else {
+                        setReceivedAmount(value)
+                      }
+                    }}
+                    placeholder="输入已收金额"
+                  />
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">应找</span>
+                    <span className="text-foreground">
+                      €{changeAmount.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="checkout-discount">折扣 (%)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="checkout-discount"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={discount === 0 ? "" : discount}
+                      onChange={(e) =>
+                        setDiscount(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
+                      }
+                      className="flex-1"
+                      placeholder="请输入折扣"
+                    />
+                    <Button type="button" variant="outline" onClick={() => setDiscount(10)}>
+                      10%
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setDiscount(20)}>
+                      20%
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">小计</span>
+                    <span className="text-foreground">
+                      €{checkoutSubtotal.toFixed(2)}
+                    </span>
+                  </div>
+                  {discount > 0 && checkoutSubtotal > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">折扣 ({discount}%)</span>
+                      <span className="text-destructive">
+                        -€{checkoutDiscountAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground">应付金额</span>
+                    <span className="text-2xl font-bold text-primary">
+                      €{checkoutTotal.toFixed(2)}
+                    </span>
+                  </div>
+                  {aaMode && (
+                    <p className="text-[11px] text-muted-foreground">
+                      当前金额基于 AA 分单计算，仅包含已加入 AA 的菜品。
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter className="pt-4 px-0 shrink-0">
+                <Button variant="outline" onClick={() => setCheckoutDialog(false)}>
+                  取消
+                </Button>
+                <Button onClick={handleCheckout} className="gap-2">
+                  <Printer className="w-4 h-4" />
+                  确认并打印
+                </Button>
+              </DialogFooter>
+            </Card>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* removed: Hold Order Dialog */}
+
+      {/* AA 数量选择弹窗 */}
+      <Dialog open={aaQuantityDialogOpen} onOpenChange={setAaQuantityDialogOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>选择 AA 数量</DialogTitle>
+            <DialogDescription>
+              {aaQuantityTarget
+                ? `${aaQuantityTarget.name}（最多 x${aaQuantityTarget.maxQuantity}）`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="aa-quantity-input">AA 数量</Label>
+            <Input
+              id="aa-quantity-input"
+              type="number"
+              min={1}
+              max={aaQuantityTarget?.maxQuantity ?? 1}
+              value={aaQuantityInput}
+              onChange={(e) => {
+                const raw = Number(e.target.value) || 0
+                if (!aaQuantityTarget) return
+                const clamped = Math.min(
+                  aaQuantityTarget.maxQuantity,
+                  Math.max(1, raw),
+                )
+                setAaQuantityInput(clamped)
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              不能超过该菜品在订单中的总数量。
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAaQuantityDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => {
+                if (!aaQuantityTarget) return
+                const quantity = Math.min(
+                  aaQuantityTarget.maxQuantity,
+                  Math.max(1, aaQuantityInput),
+                )
+                setAaItems((prev) => {
+                  const existing = prev.find(
+                    (item) => item.id === aaQuantityTarget.itemId,
+                  )
+                  if (existing) {
+                    return prev.map((item) =>
+                      item.id === aaQuantityTarget.itemId
+                        ? { ...item, quantity }
+                        : item,
+                    )
+                  }
+                  return [
+                    ...prev,
+                    {
+                      id: aaQuantityTarget.itemId,
+                      name: aaQuantityTarget.name,
+                      price: aaQuantityTarget.price,
+                      quantity,
+                    },
+                  ]
+                })
+                setAaQuantityDialogOpen(false)
+              }}
+            >
+              确认
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Split Table Dialog */}
       <Dialog open={splitTableDialog} onOpenChange={setSplitTableDialog}>
