@@ -28,11 +28,15 @@ export async function GET() {
     const categories = [{ id: "all", name: "全部" }, ...Array.from(unique).map((id) => ({ id: String(id), name: String(id) }))];
 
     return NextResponse.json({ categories, items });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: "Failed to load menu items", detail: String(err?.message ?? err) },
+      {
+        error: "Failed to load menu items",
+        detail: message,
+      },
       { status: 500 },
     );
   }
 }
-

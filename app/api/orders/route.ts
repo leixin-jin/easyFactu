@@ -222,12 +222,14 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(result, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : String(err);
     console.error("POST /api/orders error", err);
     return NextResponse.json(
       {
         error: "Failed to create order batch",
-        detail: err?.message ?? String(err),
+        detail: message,
       },
       { status: 500 },
     );
@@ -367,12 +369,14 @@ export async function GET(req: NextRequest) {
       },
       { status: 200 },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : String(err);
     console.error("GET /api/orders error", err);
     return NextResponse.json(
       {
         error: "Failed to fetch orders for table",
-        detail: err?.message ?? String(err),
+        detail: message,
       },
       { status: 500 },
     );

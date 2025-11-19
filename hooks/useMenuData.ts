@@ -33,6 +33,9 @@ export function useMenuData(options: UseMenuDataOptions = {}) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const fallbackItems = fallback?.items
+  const fallbackCategories = fallback?.categories
+
   useEffect(() => {
     let aborted = false
     const load = async () => {
@@ -67,8 +70,7 @@ export function useMenuData(options: UseMenuDataOptions = {}) {
     return () => {
       aborted = true
     }
-  }, [])
+  }, [fallbackCategories, fallbackItems])
 
   return { items, categories, loading, error }
 }
-

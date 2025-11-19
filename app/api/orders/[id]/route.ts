@@ -11,7 +11,7 @@ const patchBodySchema = z.object({
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: any },
+  context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
 
@@ -212,12 +212,14 @@ export async function PATCH(
     }
 
     return NextResponse.json(result, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : String(err);
     console.error("PATCH /api/orders/[id] error", err);
     return NextResponse.json(
       {
         error: "Failed to update order item",
-        detail: err?.message ?? String(err),
+        detail: message,
       },
       { status: 500 },
     );

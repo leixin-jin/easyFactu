@@ -84,15 +84,16 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(result, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : String(err);
     console.error("POST /api/orders/clear error", err);
     return NextResponse.json(
       {
         error: "Failed to clear order",
-        detail: err?.message ?? String(err),
+        detail: message,
       },
       { status: 500 },
     );
   }
 }
-

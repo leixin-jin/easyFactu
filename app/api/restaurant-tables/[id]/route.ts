@@ -11,7 +11,7 @@ const updateStatusSchema = z.object({
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: any },
+  context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
 
@@ -60,15 +60,16 @@ export async function PATCH(
     }
 
     return NextResponse.json(updated, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : String(err);
     console.error("PATCH /api/restaurant-tables/[id] error", err);
     return NextResponse.json(
       {
         error: "Failed to update table",
-        detail: err?.message ?? String(err),
+        detail: message,
       },
       { status: 500 },
     );
   }
 }
-

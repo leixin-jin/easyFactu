@@ -20,7 +20,7 @@ const ThemeSwitcher = () => {
     setMounted(true);
     // 若历史上存有 system，统一切至 light
     if (theme === "system") setTheme("light");
-  }, []);
+  }, [setTheme, theme]);
 
   if (!mounted) {
     return null;

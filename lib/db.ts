@@ -3,7 +3,6 @@ import { Pool } from "pg";
 import * as schema from "@/db/schema";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __drizzle_pool__: Pool | undefined;
 }
 
