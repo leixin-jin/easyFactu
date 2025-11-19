@@ -128,7 +128,6 @@ const paymentMethods = [
 ]
 
 export function FinanceManagement() {
-  const [selectedPeriod, setSelectedPeriod] = useState("today")
   const [transactions, setTransactions] = useState(mockTransactions)
   const [expenseDialog, setExpenseDialog] = useState(false)
   const [shiftDialog, setShiftDialog] = useState(false)

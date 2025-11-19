@@ -10,6 +10,7 @@
 - [Display Menu Items](doc/agents/features/display_menu_items-PLAN.md)
 - [点单加减菜与批次显示（order_management）](doc/agents/features/order_management-PLAN.md)
 - [结账与交易落库（transaction_backend）](doc/agents/features/transaction_backend-PLAN.md)
+- [AA 分单结账（transaction_AA）](doc/agents/features/transaction_AA-PLAN.md)
 
 ---
 

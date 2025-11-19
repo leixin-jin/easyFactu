@@ -96,6 +96,7 @@ interface ReceiptItem {
 }
 
 interface CheckoutReceiptData {
+  mode: "full" | "aa"
   orderId: string
   tableNumber: string
   paidAt: string
@@ -175,12 +176,7 @@ export function POSInterface() {
   const { toast } = useToast()
 
   // 菜单与分类（仅来自 API，不再使用 mock 回退）
-  const {
-    items: menuItems,
-    categories: menuCategories,
-    loading: loadingMenu,
-    error: menuError,
-  } = useMenuData()
+  const { items: menuItems, categories: menuCategories } = useMenuData()
 
   // 加载桌台列表
   async function loadTables() {
@@ -494,12 +490,10 @@ export function POSInterface() {
       return
     }
 
-    const isAA = aaMode && aaItems.length > 0
-
-    if (isAA) {
+    if (aaMode && aaItems.length === 0) {
       toast({
-        title: "AA 结账暂未接入",
-        description: "当前版本仅支持整单结账，请使用整单结账完成本次支付。",
+        title: "未选择 AA 菜品",
+        description: "请在中间的订单总结区域点击菜品，选择要 AA 结账的内容。",
         variant: "destructive",
       })
       return
@@ -541,12 +535,19 @@ export function POSInterface() {
       return
     }
 
-    const itemsForReceipt: ReceiptItem[] = aggregatedItems.map((item) => ({
-      name: item.name,
-      quantity: item.quantity,
-      unitPrice: item.price,
-      totalPrice: item.price * item.quantity,
-    }))
+    const itemsForReceipt: ReceiptItem[] = aaMode
+      ? aaItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          totalPrice: item.price * item.quantity,
+        }))
+      : aggregatedItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          totalPrice: item.price * item.quantity,
+        }))
 
     try {
       setCheckoutLoading(true)
@@ -592,19 +593,28 @@ export function POSInterface() {
         return
       }
 
+      const mode = aaMode ? "aa" : "full"
+
       const checkoutRes = await fetch("/api/orders/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tableId: selectedTable,
           orderId,
-          mode: "full",
+          mode,
           paymentMethod,
           discountPercent: discount,
           clientSubtotal: checkoutSubtotalValue,
           clientTotal: checkoutTotalValue,
           receivedAmount: effectiveReceived,
           changeAmount: effectiveReceived - checkoutTotalValue,
+          aaItems: aaMode
+            ? aaItems.map((item) => ({
+                menuItemId: item.id,
+                quantity: item.quantity,
+                price: item.price,
+              }))
+            : undefined,
         }),
       })
 
@@ -625,9 +635,15 @@ export function POSInterface() {
       const tableNumber =
         tables.find((t) => t.id === selectedTable)?.number || tableNumberParam || ""
 
-      // 结账成功：关闭弹窗并清理本地状态
-      setCurrentOrder(null)
-      setBatches([])
+      if (aaMode) {
+        setCurrentOrder(checkoutData.order ?? null)
+        setBatches(checkoutData.batches ?? [])
+      } else {
+        setCurrentOrder(null)
+        setBatches([])
+      }
+
+      // 结账成功：关闭弹窗并清理本次结账状态
       setCheckoutDialog(false)
       setAaMode(false)
       setAaItems([])
@@ -641,6 +657,7 @@ export function POSInterface() {
       await loadTables()
 
       setPrintData({
+        mode,
         orderId,
         tableNumber,
         paidAt: new Date().toLocaleString(),
@@ -898,6 +915,14 @@ export function POSInterface() {
               ))}
             </SelectContent>
           </Select>
+          {loadingTables && (
+            <p className="mt-2 text-xs text-muted-foreground">正在加载桌台列表...</p>
+          )}
+          {loadError && !loadingTables && (
+            <p className="mt-2 text-xs text-destructive">
+              加载桌台失败，已使用本地默认桌台列表。
+            </p>
+          )}
         </div>
 
         {/* Cart items: 先展示已落库批次，再展示当前未提交批次 */}
@@ -1634,7 +1659,9 @@ export function POSInterface() {
         <Card className="w-full max-w-sm border-border shadow-lg print:shadow-none print:border-0">
           <div className="p-4 space-y-2">
             <div className="text-center">
-              <h2 className="text-xl font-bold">结账小票</h2>
+              <h2 className="text-xl font-bold">
+                {printData.mode === "aa" ? "AA 分单小票" : "结账小票"}
+              </h2>
               <p className="text-xs text-muted-foreground mt-1">
                 桌台 {printData.tableNumber} · 订单号 {printData.orderId}
               </p>

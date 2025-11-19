@@ -67,7 +67,7 @@ export function MenuManagement() {
   useEffect(() => {
     setItems(
       Array.isArray(fetchedItems)
-        ? fetchedItems.map((i: any) => ({
+        ? fetchedItems.map((i) => ({
             id: String(i.id),
             name: String(i.name ?? ""),
             nameEn: String(i.nameEn ?? ""),
