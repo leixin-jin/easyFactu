@@ -9,6 +9,16 @@ const patchBodySchema = z.object({
   type: z.enum(["decrement", "remove"]),
 });
 
+function parseNumeric(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const n = parseFloat(value);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
 export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -46,6 +56,7 @@ export async function PATCH(
           id: orderItems.id,
           orderId: orderItems.orderId,
           quantity: orderItems.quantity,
+          paidQuantity: orderItems.paidQuantity,
           price: orderItems.price,
         })
         .from(orderItems)
@@ -72,46 +83,78 @@ export async function PATCH(
         );
       }
 
-      const priceValue =
-        typeof item.price === "string"
-          ? parseFloat(item.price)
-          : Number(item.price);
+      const priceValue = parseNumeric(item.price);
+      const existingSubtotal = parseNumeric(currentOrder.subtotal);
+      const existingDiscount = parseNumeric(currentOrder.discount);
+      const existingTotalAmount = parseNumeric(
+        (currentOrder as { totalAmount?: unknown }).totalAmount ??
+          (currentOrder as { total?: unknown }).total ??
+          0,
+      );
 
-      const existingSubtotal =
-        currentOrder.subtotal != null
-          ? typeof currentOrder.subtotal === "string"
-            ? parseFloat(currentOrder.subtotal)
-            : Number(currentOrder.subtotal)
-          : 0;
+      const alreadyPaidQty = item.paidQuantity ?? 0;
+      const availableQty = item.quantity - alreadyPaidQty;
 
-      const existingDiscount =
-        currentOrder.discount != null
-          ? typeof currentOrder.discount === "string"
-            ? parseFloat(currentOrder.discount)
-            : Number(currentOrder.discount)
-          : 0;
+      if (availableQty <= 0) {
+        return NextResponse.json(
+          {
+            error: "Cannot modify item that is already fully paid",
+            code: "ITEM_FULLY_PAID",
+          },
+          { status: 409 },
+        );
+      }
 
+      let newQuantity = item.quantity;
       let newSubtotal = existingSubtotal;
+      let newTotalAmount = existingTotalAmount;
 
       if (type === "decrement") {
-        const newQuantity = item.quantity - 1;
-        if (newQuantity > 0) {
-          await tx
-            .update(orderItems)
-            .set({ quantity: newQuantity })
-            .where(eq(orderItems.id, item.id));
-          newSubtotal = existingSubtotal - priceValue;
-        } else {
-          await tx.delete(orderItems).where(eq(orderItems.id, item.id));
-          newSubtotal = existingSubtotal - priceValue * item.quantity;
+        // 只能在未结算的数量范围内减一
+        if (item.quantity - 1 < alreadyPaidQty) {
+          return NextResponse.json(
+            {
+              error: "Cannot decrement below paid quantity",
+              code: "DECREMENT_BELOW_PAID_QUANTITY",
+            },
+            { status: 409 },
+          );
         }
+
+        newQuantity = item.quantity - 1;
+        const delta = priceValue;
+        newSubtotal = existingSubtotal - delta;
+        newTotalAmount = existingTotalAmount - delta;
+
+        await tx
+          .update(orderItems)
+          .set({ quantity: newQuantity })
+          .where(eq(orderItems.id, item.id));
       } else {
+        // remove：仅允许尚未结算的菜品整行删除
+        if (alreadyPaidQty > 0) {
+          return NextResponse.json(
+            {
+              error: "Cannot remove item that is already partially or fully paid",
+              code: "REMOVE_PAID_ITEM_FORBIDDEN",
+            },
+            { status: 409 },
+          );
+        }
+
+        const delta = priceValue * item.quantity;
+        newSubtotal = existingSubtotal - delta;
+        newTotalAmount = existingTotalAmount - delta;
+
         await tx.delete(orderItems).where(eq(orderItems.id, item.id));
-        newSubtotal = existingSubtotal - priceValue * item.quantity;
+        newQuantity = 0;
       }
 
       if (newSubtotal < 0) {
         newSubtotal = 0;
+      }
+      if (newTotalAmount < 0) {
+        newTotalAmount = 0;
       }
 
       const newTotal = newSubtotal - existingDiscount;
@@ -121,6 +164,7 @@ export async function PATCH(
         .set({
           subtotal: newSubtotal.toFixed(2),
           total: newTotal.toFixed(2),
+          totalAmount: newTotalAmount.toFixed(2),
         })
         .where(eq(orders.id, currentOrder.id));
 
@@ -129,6 +173,7 @@ export async function PATCH(
           id: orderItems.id,
           batchNo: orderItems.batchNo,
           quantity: orderItems.quantity,
+          paidQuantity: orderItems.paidQuantity,
           price: orderItems.price,
           notes: orderItems.notes,
           createdAt: orderItems.createdAt,
@@ -166,13 +211,20 @@ export async function PATCH(
             items: [],
           });
         }
+
+        const effectiveQuantity =
+          row.quantity - (row.paidQuantity ?? 0);
+        if (effectiveQuantity <= 0) {
+          continue;
+        }
+
         const batch = batchesMap.get(batchNo)!;
         batch.items.push({
           id: row.id,
           menuItemId: row.menuItemId,
           name: row.name ?? "",
           nameEn: row.nameEn ?? "",
-          quantity: row.quantity,
+          quantity: effectiveQuantity,
           price:
             typeof row.price === "string"
               ? parseFloat(row.price)
@@ -186,17 +238,18 @@ export async function PATCH(
         (a, b) => a.batchNo - b.batchNo,
       );
 
-      const updatedSubtotal = newSubtotal;
-      const updatedTotal = newTotal;
-
       return {
         order: {
           id: currentOrder.id,
           tableId: currentOrder.tableId,
           status: currentOrder.status,
-          subtotal: updatedSubtotal,
+          subtotal: newSubtotal,
           discount: existingDiscount,
-          total: updatedTotal,
+          total: newTotal,
+          totalAmount: newTotalAmount,
+          paidAmount: parseNumeric(
+            (currentOrder as { paidAmount?: unknown }).paidAmount,
+          ),
           paymentMethod: currentOrder.paymentMethod ?? null,
           createdAt: currentOrder.createdAt.toISOString(),
           closedAt: currentOrder.closedAt

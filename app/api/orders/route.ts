@@ -18,6 +18,16 @@ const orderCreateSchema = z.object({
   paymentMethod: z.string().min(1).optional(),
 });
 
+function parseNumeric(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const n = parseFloat(value);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const json = await req.json();
@@ -77,33 +87,32 @@ export async function POST(req: NextRequest) {
             subtotal: itemsSubtotal.toFixed(2),
             discount: "0",
             total: itemsSubtotal.toFixed(2),
+            totalAmount: itemsSubtotal.toFixed(2),
+            paidAmount: "0",
           })
           .returning();
 
         currentOrder = created;
       } else {
-        const existingSubtotal =
-          currentOrder.subtotal != null
-            ? typeof currentOrder.subtotal === "string"
-              ? parseFloat(currentOrder.subtotal)
-              : Number(currentOrder.subtotal)
-            : 0;
-
-        const existingDiscount =
-          currentOrder.discount != null
-            ? typeof currentOrder.discount === "string"
-              ? parseFloat(currentOrder.discount)
-              : Number(currentOrder.discount)
-            : 0;
+        const existingSubtotal = parseNumeric(currentOrder.subtotal);
+        const existingDiscount = parseNumeric(currentOrder.discount);
+        const existingTotalAmount = parseNumeric(
+          // 旧数据可能没有 totalAmount，回退到 total
+          (currentOrder as { totalAmount?: unknown }).totalAmount ??
+            (currentOrder as { total?: unknown }).total ??
+            0,
+        );
 
         const newSubtotal = existingSubtotal + itemsSubtotal;
         const newTotal = newSubtotal - existingDiscount;
+        const newTotalAmount = existingTotalAmount + itemsSubtotal;
 
         await tx
           .update(orders)
           .set({
             subtotal: newSubtotal.toFixed(2),
             total: newTotal.toFixed(2),
+            totalAmount: newTotalAmount.toFixed(2),
             paymentMethod: paymentMethod ?? currentOrder.paymentMethod,
           })
           .where(eq(orders.id, currentOrder.id));
@@ -280,15 +289,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const rows = await db
-      .select({
-        id: orderItems.id,
-        batchNo: orderItems.batchNo,
-        quantity: orderItems.quantity,
-        price: orderItems.price,
-        notes: orderItems.notes,
-        createdAt: orderItems.createdAt,
-        menuItemId: orderItems.menuItemId,
+      const rows = await db
+        .select({
+          id: orderItems.id,
+          batchNo: orderItems.batchNo,
+          quantity: orderItems.quantity,
+          paidQuantity: orderItems.paidQuantity,
+          price: orderItems.price,
+          notes: orderItems.notes,
+          createdAt: orderItems.createdAt,
+          menuItemId: orderItems.menuItemId,
         name: menuItems.name,
         nameEn: menuItems.nameEn,
       })
@@ -314,25 +324,32 @@ export async function GET(req: NextRequest) {
       }
     >();
 
-    for (const row of rows) {
-      const batchNo = row.batchNo ?? 1;
-      if (!batchesMap.has(batchNo)) {
-        batchesMap.set(batchNo, {
-          batchNo,
-          items: [],
+      for (const row of rows) {
+        const batchNo = row.batchNo ?? 1;
+        if (!batchesMap.has(batchNo)) {
+          batchesMap.set(batchNo, {
+            batchNo,
+            items: [],
+          });
+        }
+
+        const effectiveQuantity =
+          row.quantity - (row.paidQuantity ?? 0);
+        if (effectiveQuantity <= 0) {
+          continue;
+        }
+
+        const batch = batchesMap.get(batchNo)!;
+        batch.items.push({
+          id: row.id,
+          menuItemId: row.menuItemId,
+          name: row.name ?? "",
+          nameEn: row.nameEn ?? "",
+          quantity: effectiveQuantity,
+          price: typeof row.price === "string" ? parseFloat(row.price) : Number(row.price),
+          notes: row.notes ?? null,
+          createdAt: row.createdAt.toISOString(),
         });
-      }
-      const batch = batchesMap.get(batchNo)!;
-      batch.items.push({
-        id: row.id,
-        menuItemId: row.menuItemId,
-        name: row.name ?? "",
-        nameEn: row.nameEn ?? "",
-        quantity: row.quantity,
-        price: typeof row.price === "string" ? parseFloat(row.price) : Number(row.price),
-        notes: row.notes ?? null,
-        createdAt: row.createdAt.toISOString(),
-      });
     }
 
     const batches = Array.from(batchesMap.values()).sort((a, b) => a.batchNo - b.batchNo);
@@ -343,24 +360,15 @@ export async function GET(req: NextRequest) {
           id: currentOrder.id,
           tableId: currentOrder.tableId,
           status: currentOrder.status,
-          subtotal:
-            currentOrder.subtotal != null
-              ? typeof currentOrder.subtotal === "string"
-                ? parseFloat(currentOrder.subtotal)
-                : Number(currentOrder.subtotal)
-              : 0,
-          discount:
-            currentOrder.discount != null
-              ? typeof currentOrder.discount === "string"
-                ? parseFloat(currentOrder.discount)
-                : Number(currentOrder.discount)
-              : 0,
-          total:
-            currentOrder.total != null
-              ? typeof currentOrder.total === "string"
-                ? parseFloat(currentOrder.total)
-                : Number(currentOrder.total)
-              : 0,
+          subtotal: parseNumeric(currentOrder.subtotal),
+          discount: parseNumeric(currentOrder.discount),
+          total: parseNumeric(currentOrder.total),
+          totalAmount: parseNumeric(
+            (currentOrder as { totalAmount?: unknown }).totalAmount,
+          ),
+          paidAmount: parseNumeric(
+            (currentOrder as { paidAmount?: unknown }).paidAmount,
+          ),
           paymentMethod: currentOrder.paymentMethod ?? null,
           createdAt: currentOrder.createdAt.toISOString(),
           closedAt: currentOrder.closedAt ? currentOrder.closedAt.toISOString() : null,

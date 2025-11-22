@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
           id: orderItems.id,
           batchNo: orderItems.batchNo,
           quantity: orderItems.quantity,
+          paidQuantity: orderItems.paidQuantity,
           price: orderItems.price,
           notes: orderItems.notes,
           createdAt: orderItems.createdAt,
@@ -152,9 +153,11 @@ export async function POST(req: NextRequest) {
           string,
           {
             totalQuantity: number;
+            unpaidQuantity: number;
             rows: Array<
               (typeof rows)[number] & {
                 numericPrice: number;
+                unpaidQuantity: number;
               }
             >;
           }
@@ -162,14 +165,22 @@ export async function POST(req: NextRequest) {
 
         for (const row of rows) {
           const numericPrice = parseNumeric(row.price);
+          const paidQty = row.paidQuantity ?? 0;
+          const unpaidQty = row.quantity - paidQty;
+          if (unpaidQty <= 0) {
+            continue;
+          }
           const existing = itemsByMenuItem.get(row.menuItemId) ?? {
             totalQuantity: 0,
+            unpaidQuantity: 0,
             rows: [],
           };
           existing.totalQuantity += row.quantity;
+          existing.unpaidQuantity += unpaidQty;
           existing.rows.push({
             ...row,
             numericPrice,
+            unpaidQuantity: unpaidQty,
           });
           itemsByMenuItem.set(row.menuItemId, existing);
         }
@@ -194,7 +205,7 @@ export async function POST(req: NextRequest) {
 
         for (const [menuItemId, { quantity }] of aaByMenuItem.entries()) {
           const entry = itemsByMenuItem.get(menuItemId);
-          const availableQuantity = entry?.totalQuantity ?? 0;
+          const availableQuantity = entry?.unpaidQuantity ?? 0;
           if (availableQuantity < quantity) {
             return NextResponse.json(
               {
@@ -221,7 +232,9 @@ export async function POST(req: NextRequest) {
           let remaining = quantity;
           for (const row of entry.rows) {
             if (remaining <= 0) break;
-            const useQty = Math.min(row.quantity, remaining);
+            const available = row.unpaidQuantity;
+            if (available <= 0) continue;
+            const useQty = Math.min(available, remaining);
             if (useQty > 0) {
               const existing = allocationByRowId.get(row.id) ?? 0;
               allocationByRowId.set(row.id, existing + useQty);
@@ -284,11 +297,13 @@ export async function POST(req: NextRequest) {
 
         const changeAmount = Math.max(0, effectiveReceived - aaCalculatedTotal);
 
+        // 更新已付数量，不删除任何 order_items 行
         for (const row of rows) {
           const deductQty = allocationByRowId.get(row.id) ?? 0;
           if (deductQty <= 0) continue;
-          const remainingQty = row.quantity - deductQty;
-          if (remainingQty < 0) {
+          const paidQty = row.paidQuantity ?? 0;
+          const newPaidQty = paidQty + deductQty;
+          if (newPaidQty > row.quantity) {
             return NextResponse.json(
               {
                 error: "AA checkout conflict on item quantity",
@@ -298,25 +313,21 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          if (remainingQty === 0) {
-            await tx
-              .delete(orderItems)
-              .where(eq(orderItems.id, row.id));
-          } else {
-            await tx
-              .update(orderItems)
-              .set({
-                quantity: remainingQty,
-              })
-              .where(eq(orderItems.id, row.id));
-          }
+          await tx
+            .update(orderItems)
+            .set({
+              paidQuantity: newPaidQty,
+            })
+            .where(eq(orderItems.id, row.id));
         }
 
+        // 重新查询，计算整单总额与剩余未结金额
         const remainingRows = await tx
           .select({
             id: orderItems.id,
             batchNo: orderItems.batchNo,
             quantity: orderItems.quantity,
+            paidQuantity: orderItems.paidQuantity,
             price: orderItems.price,
             notes: orderItems.notes,
             createdAt: orderItems.createdAt,
@@ -329,21 +340,41 @@ export async function POST(req: NextRequest) {
           .where(eq(orderItems.orderId, order.id))
           .orderBy(asc(orderItems.batchNo), asc(orderItems.createdAt));
 
-        const remainingSubtotal = remainingRows.reduce((sum, row) => {
+        const fullSubtotal = remainingRows.reduce((sum, row) => {
           const price = parseNumeric(row.price);
           return sum + price * row.quantity;
         }, 0);
 
+        const remainingSubtotal = remainingRows.reduce((sum, row) => {
+          const price = parseNumeric(row.price);
+          const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
+          if (unpaidQty <= 0) return sum;
+          return sum + price * unpaidQty;
+        }, 0);
+
+        const existingTotalAmount = parseNumeric(
+          (order as { totalAmount?: unknown }).totalAmount ?? 0,
+        );
+        const existingPaidAmount = parseNumeric(
+          (order as { paidAmount?: unknown }).paidAmount ?? 0,
+        );
+
+        const newTotalAmount =
+          existingTotalAmount > 0 ? existingTotalAmount : fullSubtotal;
+        const newPaidAmount = existingPaidAmount + aaCalculatedTotal;
+
         let updatedOrder;
 
-        if (remainingRows.length === 0) {
+        if (remainingSubtotal <= epsilon) {
           [updatedOrder] = await tx
             .update(orders)
             .set({
               status: "paid",
-              subtotal: aaDbSubtotal.toFixed(2),
-              discount: aaDiscountAmount.toFixed(2),
-              total: aaCalculatedTotal.toFixed(2),
+              subtotal: fullSubtotal.toFixed(2),
+              discount: "0",
+              total: newPaidAmount.toFixed(2),
+              totalAmount: newTotalAmount.toFixed(2),
+              paidAmount: newPaidAmount.toFixed(2),
               paymentMethod,
               closedAt: new Date(),
             })
@@ -360,15 +391,15 @@ export async function POST(req: NextRequest) {
             })
             .where(eq(restaurantTables.id, tableId));
         } else {
-          const remainingTotal = remainingSubtotal;
-
           [updatedOrder] = await tx
             .update(orders)
             .set({
               status: "open",
-              subtotal: remainingSubtotal.toFixed(2),
+              subtotal: fullSubtotal.toFixed(2),
               discount: "0",
-              total: remainingTotal.toFixed(2),
+              total: newPaidAmount.toFixed(2),
+              totalAmount: newTotalAmount.toFixed(2),
+              paidAmount: newPaidAmount.toFixed(2),
               paymentMethod,
               closedAt: null,
             })
@@ -414,6 +445,8 @@ export async function POST(req: NextRequest) {
         >();
 
         for (const row of remainingRows) {
+          const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
+          if (unpaidQty <= 0) continue;
           const batchNo = row.batchNo ?? 1;
           if (!batchesMap.has(batchNo)) {
             batchesMap.set(batchNo, {
@@ -427,7 +460,7 @@ export async function POST(req: NextRequest) {
             menuItemId: row.menuItemId,
             name: row.name ?? "",
             nameEn: row.nameEn ?? "",
-            quantity: row.quantity,
+            quantity: unpaidQty,
             price:
               typeof row.price === "string"
                 ? parseFloat(row.price)
@@ -449,6 +482,12 @@ export async function POST(req: NextRequest) {
             subtotal: parseNumeric(updatedOrder.subtotal),
             discount: parseNumeric(updatedOrder.discount),
             total: parseNumeric(updatedOrder.total),
+            totalAmount: parseNumeric(
+              (updatedOrder as { totalAmount?: unknown }).totalAmount,
+            ),
+            paidAmount: parseNumeric(
+              (updatedOrder as { paidAmount?: unknown }).paidAmount,
+            ),
             paymentMethod: updatedOrder.paymentMethod ?? null,
             createdAt: updatedOrder.createdAt.toISOString(),
             closedAt: updatedOrder.closedAt
@@ -483,23 +522,30 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      const dbSubtotal = rows.reduce((sum, row) => {
+      const fullSubtotal = rows.reduce((sum, row) => {
         const price = parseNumeric(row.price);
         return sum + price * row.quantity;
       }, 0);
 
-      const discountRate = discountPercent > 0 ? discountPercent / 100 : 0;
-      const discountAmount = dbSubtotal * discountRate;
-      const calculatedTotal = dbSubtotal - discountAmount;
+      const outstandingSubtotal = rows.reduce((sum, row) => {
+        const price = parseNumeric(row.price);
+        const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
+        if (unpaidQty <= 0) return sum;
+        return sum + price * unpaidQty;
+      }, 0);
 
-      if (Math.abs(clientSubtotal - dbSubtotal) > epsilon) {
+      const discountRate = discountPercent > 0 ? discountPercent / 100 : 0;
+      const discountAmount = outstandingSubtotal * discountRate;
+      const calculatedTotal = outstandingSubtotal - discountAmount;
+
+      if (Math.abs(clientSubtotal - outstandingSubtotal) > epsilon) {
         return NextResponse.json(
           {
             error: "Client subtotal does not match server subtotal",
             code: "SUBTOTAL_MISMATCH",
             detail: {
               clientSubtotal,
-              serverSubtotal: Number(dbSubtotal.toFixed(2)),
+              serverSubtotal: Number(outstandingSubtotal.toFixed(2)),
             },
           },
           { status: 409 },
@@ -541,13 +587,35 @@ export async function POST(req: NextRequest) {
 
       const changeAmount = Math.max(0, effectiveReceived - calculatedTotal);
 
+      const existingTotalAmount = parseNumeric(
+        (order as { totalAmount?: unknown }).totalAmount ?? 0,
+      );
+      const existingPaidAmount = parseNumeric(
+        (order as { paidAmount?: unknown }).paidAmount ?? 0,
+      );
+
+      const newTotalAmount =
+        existingTotalAmount > 0 ? existingTotalAmount : fullSubtotal;
+      const newPaidAmount = existingPaidAmount + calculatedTotal;
+
+      // 整单结算：将所有菜品标记为已付（paidQuantity = quantity）
+      for (const row of rows) {
+        const qty = row.quantity;
+        await tx
+          .update(orderItems)
+          .set({ paidQuantity: qty })
+          .where(eq(orderItems.id, row.id));
+      }
+
       const [updatedOrder] = await tx
         .update(orders)
         .set({
           status: "paid",
-          subtotal: dbSubtotal.toFixed(2),
+          subtotal: fullSubtotal.toFixed(2),
           discount: discountAmount.toFixed(2),
-          total: calculatedTotal.toFixed(2),
+          total: newPaidAmount.toFixed(2),
+          totalAmount: newTotalAmount.toFixed(2),
+          paidAmount: newPaidAmount.toFixed(2),
           paymentMethod,
           closedAt: new Date(),
         })
@@ -594,6 +662,8 @@ export async function POST(req: NextRequest) {
       >();
 
       for (const row of rows) {
+        const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
+        if (unpaidQty <= 0) continue;
         const batchNo = row.batchNo ?? 1;
         if (!batchesMap.has(batchNo)) {
           batchesMap.set(batchNo, {
@@ -607,7 +677,7 @@ export async function POST(req: NextRequest) {
           menuItemId: row.menuItemId,
           name: row.name ?? "",
           nameEn: row.nameEn ?? "",
-          quantity: row.quantity,
+          quantity: unpaidQty,
           price:
             typeof row.price === "string"
               ? parseFloat(row.price)
@@ -629,6 +699,12 @@ export async function POST(req: NextRequest) {
           subtotal: parseNumeric(updatedOrder.subtotal),
           discount: parseNumeric(updatedOrder.discount),
           total: parseNumeric(updatedOrder.total),
+          totalAmount: parseNumeric(
+            (updatedOrder as { totalAmount?: unknown }).totalAmount,
+          ),
+          paidAmount: parseNumeric(
+            (updatedOrder as { paidAmount?: unknown }).paidAmount,
+          ),
           paymentMethod: updatedOrder.paymentMethod ?? null,
           createdAt: updatedOrder.createdAt.toISOString(),
           closedAt: updatedOrder.closedAt

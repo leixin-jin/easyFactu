@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
               currentOrder.discount != null
                 ? currentOrder.discount
                 : "0",
+            totalAmount: "0",
+            paidAmount: "0",
             closedAt: new Date(),
           })
           .where(eq(orders.id, currentOrder.id));
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
       // 清空后恢复桌台为空闲
       await tx
         .update(restaurantTables)
-        .set({ status: "idle" })
+        .set({ status: "idle", amount: "0" })
         .where(eq(restaurantTables.id, tableId));
 
       return {

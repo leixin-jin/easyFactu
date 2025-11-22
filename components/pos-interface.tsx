@@ -76,6 +76,8 @@ interface CurrentOrderSummary {
   subtotal: number
   discount: number
   total: number
+  totalAmount?: number
+  paidAmount?: number
   paymentMethod: string | null
   createdAt: string
   closedAt: string | null
@@ -1169,8 +1171,8 @@ export function POSInterface() {
           }
         }}
       >
-        {/* 固定高度的三栏结账页面：宽度约为视口 80%，高度不超过视口高度 */}
-        <DialogContent className="w-[80vw] max-w-[80vw] sm:max-w-[80vw] max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
+        {/* 固定高度的三栏结账页面：宽度约为视口 80%，高度固定为视口高度减去上下间距 */}
+        <DialogContent className="w-[80vw] max-w-[80vw] sm:max-w-[80vw] h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>订单结账</DialogTitle>
             <DialogDescription>
