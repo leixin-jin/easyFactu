@@ -4,6 +4,16 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { orders, restaurantTables } from "@/db/schema";
 
+function parseNumeric(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const n = parseFloat(value);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
 export async function GET() {
   try {
     const db = getDb();
@@ -15,8 +25,8 @@ export async function GET() {
         capacity: restaurantTables.capacity,
         status: restaurantTables.status,
         area: restaurantTables.area,
-        orderSubtotal: orders.subtotal,
-        orderTotal: orders.total,
+        orderTotalAmount: orders.totalAmount,
+        orderPaidAmount: orders.paidAmount,
       })
       .from(restaurantTables)
       .leftJoin(
@@ -25,23 +35,10 @@ export async function GET() {
       );
 
     const mapped = rows.map((row) => {
-      const subtotal = row.orderSubtotal;
-      const total = row.orderTotal;
+      const totalAmount = parseNumeric(row.orderTotalAmount);
+      const paidAmount = parseNumeric(row.orderPaidAmount);
 
-      const parseAmount = (value: unknown): number | null => {
-        if (value == null) return null;
-        if (typeof value === "number") return value;
-        if (typeof value === "string") {
-          const n = parseFloat(value);
-          return Number.isNaN(n) ? null : n;
-        }
-        return null;
-      };
-
-      const amount =
-        parseAmount(total) !== null
-          ? parseAmount(total)
-          : parseAmount(subtotal);
+      const outstanding = Math.max(0, totalAmount - paidAmount);
 
       return {
         id: row.id,
@@ -49,7 +46,7 @@ export async function GET() {
         capacity: row.capacity,
         status: row.status,
         area: row.area,
-        amount,
+        amount: outstanding || null,
       };
     });
 

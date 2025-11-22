@@ -81,9 +81,9 @@
   1. 校验请求体。
   2. 确认桌台存在，将桌台状态更新为 `occupied`。
   3. 查找该桌台是否存在状态为 `open` 的订单：
-     - 如果没有：新建一条 `orders` 记录（status=`open`），`subtotal`/`total` 以本次批次金额为初值。
-     - 如果已有：在原有 `subtotal` 基础上累加本次批次金额，并重新计算 `total`（`total = subtotal - discount`）。
-  4. 为本次批次生成 `batchNo`，插入多条 `order_items`。
+     - 如果没有：新建一条 `orders` 记录（status=`open`），`subtotal`/`total` 以本次批次金额为初值，同时将 `total_amount` 初始化为本次批次金额、`paid_amount` 为 0。
+     - 如果已有：在原有 `subtotal` 和 `total_amount` 基础上累加本次批次金额，并重新计算 `total`（`total = subtotal - discount`）。
+  4. 为本次批次生成 `batchNo`，插入多条 `order_items`（新的 `paid_quantity` 字段默认 0，表示尚未结算）。
   5. 查询整个订单的所有 `order_items` 按批次聚合，返回 `order` 与 `batches`。
 
 前端收到响应后：
@@ -93,19 +93,20 @@
 
 ### 4. 修改已下单菜品（加减 / 删除）
 
-结账之前，用户可以在已下单的批次中减少某个菜品数量或直接删除：
+结账之前，用户可以在已下单的批次中减少某个菜品数量或直接删除（但不能动已经结算过的数量）：
 
 - 前端调用的是 `updatePersistedItem`：
   - `PATCH /api/orders/:id`，其中 `:id` 为 `order_items.id`。
   - body: `{ type: "decrement" | "remove" }`。
 
 - 后端逻辑（`app/api/orders/[id]/route.ts`）：
-  1. 找到该 `order_items` 记录及其所属订单。
-  2. 根据 type：
-     - `decrement`：数量减 1，若结果为 0，则删除该行；否则更新数量。
-     - `remove`：直接删除该行。
-  3. 按实际减少金额更新 `orders.subtotal`/`orders.total`。
-  4. 重新查询该订单的所有 `order_items`，按批次聚合返回。
+  1. 找到该 `order_items` 记录及其所属订单（包括 `paid_quantity`）。
+  2. 计算该行「未结数量」：`availableQty = quantity - paid_quantity`，若为 0，则禁止修改。
+  3. 根据 type：
+     - `decrement`：数量减 1，但要求新数量 `newQuantity` 不得小于已付数量 `paid_quantity`；仅对未结部分生效。
+     - `remove`：仅当该行尚未结算（`paid_quantity = 0`）时允许整行删除；若已经部分/全部结算则返回错误。
+  4. 按实际减少的金额更新 `orders.subtotal` 与 `orders.total_amount`（整单金额），`orders.paid_amount` 不受影响。
+  5. 重新查询该订单的所有 `order_items`，按批次聚合返回时，只展示「未结数量 > 0」的菜品（`quantity - paid_quantity`），从而保持前端列表仅看到未结部分。
 
 ### 5. 结算（整单 / AA）
 
@@ -337,4 +338,3 @@
 3. **AA 后再整单结算金额问题**：
    - 当前实现中，`orders.total` 最终只体现最后一次结算的金额（例如剩余 40），而 AA 已收的部分只体现在 `transactions` 中。
    - 若希望 `orders` 上能直接看到整张发票的累计金额，需要对字段设计或结算逻辑做调整，或在统计查询时基于 `transactions` 聚合。
-
