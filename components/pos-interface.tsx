@@ -35,6 +35,11 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useMenuData } from "@/hooks/useMenuData"
 import { useToast } from "@/hooks/use-toast"
+import {
+  type RestaurantTableView as TableOption,
+  type TableStatus,
+  useRestaurantTables,
+} from "@/hooks/useRestaurantTables"
 
 interface MenuItem {
   id: string
@@ -114,13 +119,6 @@ interface CheckoutReceiptData {
 
 // 分类改为从 /api/menu-items 获取（通过 useMenuData），已移除菜单 mock
 
-type TableStatus = "idle" | "occupied"
-interface TableOption {
-  id: string
-  number: string
-  status?: TableStatus
-}
-
 // 仅用于接口失败时的降级回退
 const mockTables: TableOption[] = [
   { id: "1", number: "A-01", status: "occupied" },
@@ -130,6 +128,23 @@ const mockTables: TableOption[] = [
   { id: "5", number: "B-02", status: "idle" },
 ]
 
+const errorCodeToMessage: Record<string, string> = {
+  SUBTOTAL_MISMATCH: "订单金额已在其他终端更新，请刷新后按最新金额重新结账。",
+  TOTAL_MISMATCH: "订单金额已在其他终端更新，请刷新后按最新金额重新结账。",
+  AA_QUANTITY_EXCEEDS_ORDER: "AA 份数超过订单中可分配的数量，请检查选择。",
+  AA_QUANTITY_CONFLICT: "AA 结账时菜品数量发生冲突，请刷新后重试。",
+  AA_ITEMS_REQUIRED: "AA 结账至少需要选择一项菜品。",
+  INSUFFICIENT_RECEIVED_AMOUNT: "收款金额不足，请确认实收金额大于等于应付金额。",
+  ITEM_FULLY_PAID: "该菜品已全部结清，无法再次修改或 AA。",
+  DECREMENT_BELOW_PAID_QUANTITY: "不能将数量减到已支付份数以下。",
+  REMOVE_PAID_ITEM_FORBIDDEN: "已支付或部分支付的菜品不能被移除。",
+  ORDER_NOT_OPEN: "订单已不在进行中状态，无法结账。",
+  ORDER_EMPTY: "当前订单没有任何菜品，无法结账。",
+  TABLE_NOT_FOUND: "未找到对应桌台，请刷新页面后重试。",
+  ORDER_NOT_FOUND: "未找到对应订单，请刷新页面后重试。",
+  OPEN_ORDER_ALREADY_EXISTS: "该桌台已存在进行中的订单，请刷新后重试。",
+}
+
 export function POSInterface() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -137,9 +152,12 @@ export function POSInterface() {
   const tableNumberParam = searchParams.get("tableNumber") || ""
 
   // 桌台列表（来自 API），失败时回退到 mock
-  const [tables, setTables] = useState<TableOption[]>([])
-  const [loadingTables, setLoadingTables] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const {
+    tables,
+    loading: loadingTables,
+    error: loadError,
+    reload: reloadTables,
+  } = useRestaurantTables({ fallback: mockTables })
 
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -179,33 +197,6 @@ export function POSInterface() {
 
   // 菜单与分类（仅来自 API，不再使用 mock 回退）
   const { items: menuItems, categories: menuCategories } = useMenuData()
-
-  // 加载桌台列表
-  async function loadTables() {
-    try {
-      setLoadingTables(true)
-      setLoadError(null)
-      const res = await fetch("/api/restaurant-tables", { cache: "no-store" })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: Array<{ id: string; number: string; status?: string | null }> = await res.json()
-      const mapped: TableOption[] = data.map((r) => ({
-        id: String(r.id),
-        number: r.number,
-        status: (r.status as TableStatus) ?? "idle",
-      }))
-      mapped.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: "base" }))
-      setTables(mapped)
-    } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : "加载失败")
-      setTables(mockTables)
-    } finally {
-      setLoadingTables(false)
-    }
-  }
-
-  useEffect(() => {
-    loadTables()
-  }, [])
 
   // 结账成功后在当前窗口内触发打印
   useEffect(() => {
@@ -450,7 +441,6 @@ export function POSInterface() {
           items: cart.map((item) => ({
             menuItemId: item.id,
             quantity: item.quantity,
-            price: item.price,
             notes: item.notes ?? undefined,
           })),
         }),
@@ -557,7 +547,7 @@ export function POSInterface() {
 
       let orderId = currentOrder?.id ?? null
 
-      // 如有未提交的草稿批次，先自动提交
+      // 如有未提交的草稿批次，先自动提交（当前通过入口约束，正常情况下 cart 已为空）
       if (cart.length > 0) {
         const res = await fetch("/api/orders", {
           method: "POST",
@@ -568,7 +558,6 @@ export function POSInterface() {
             items: cart.map((item) => ({
               menuItemId: item.id,
               quantity: item.quantity,
-              price: item.price,
               notes: item.notes ?? undefined,
             })),
           }),
@@ -623,8 +612,14 @@ export function POSInterface() {
       const checkoutData = await checkoutRes.json().catch(() => null)
 
       if (!checkoutRes.ok) {
+        const rawMessage = (checkoutData && (checkoutData.error as string)) || ""
+        const code = (checkoutData && (checkoutData.code as string)) || ""
+        const mapped = code && errorCodeToMessage[code]
         const message =
-          (checkoutData && (checkoutData.error as string)) || `结账失败 (${checkoutRes.status})`
+          mapped ||
+          rawMessage ||
+          (code ? `结账失败（错误码：${code}）` : `结账失败 (${checkoutRes.status})`)
+
         setOrderError(message)
         toast({
           title: "结账失败",
@@ -656,7 +651,7 @@ export function POSInterface() {
       setDiscount(0)
 
       // 刷新桌台列表，确保状态变为 idle
-      await loadTables()
+      await reloadTables()
 
       setPrintData({
         mode,
@@ -735,6 +730,14 @@ export function POSInterface() {
 
   const handleAA = () => {
     if (!selectedTable || (cart.length === 0 && batches.length === 0)) {
+      return
+    }
+    if (cart.length > 0) {
+      toast({
+        title: "存在未提交菜品",
+        description: "当前还有未提交的菜品，请先点击「下单」后再进行 AA 结账。",
+        variant: "destructive",
+      })
       return
     }
     setReceivedAmount(0)
@@ -1274,7 +1277,20 @@ export function POSInterface() {
                         <span className="truncate max-w-[10rem] sm:max-w-[12rem] text-foreground">
                           {item.name}
                         </span>
-                        <span className="text-muted-foreground">x{item.quantity}</span>
+                        <div className="flex flex-col items-end">
+                          <span className="text-muted-foreground">x{item.quantity}</span>
+                          {aaMode && (
+                            <span className="mt-0.5 text-[11px] text-muted-foreground">
+                              已选{" "}
+                              {aaItems.find((aa) => aa.id === item.id)?.quantity ?? 0} / 剩余{" "}
+                              {Math.max(
+                                0,
+                                item.quantity -
+                                  (aaItems.find((aa) => aa.id === item.id)?.quantity ?? 0),
+                              )}
+                            </span>
+                          )}
+                        </div>
                       </button>
                     ))
                   )}
@@ -1474,6 +1490,12 @@ export function POSInterface() {
                       €{checkoutTotal.toFixed(2)}
                     </span>
                   </div>
+                  {currentOrder && (
+                    <p className="text-[11px] text-muted-foreground">
+                      已收合计：€{(currentOrder.paidAmount ?? 0).toFixed(2)} · 本次应收：
+                      €{checkoutTotal.toFixed(2)}
+                    </p>
+                  )}
                   {aaMode && (
                     <p className="text-[11px] text-muted-foreground">
                       当前金额基于 AA 分单计算，仅包含已加入 AA 的菜品。
@@ -1603,7 +1625,7 @@ export function POSInterface() {
                 <SelectValue placeholder="选择目标桌台" />
               </SelectTrigger>
               <SelectContent>
-                {mockTables
+                {tables
                   .filter((t) => t.id !== selectedTable)
                   .map((table) => (
                     <SelectItem key={table.id} value={table.id}>
@@ -1636,7 +1658,7 @@ export function POSInterface() {
                 <SelectValue placeholder="选择目标桌台" />
               </SelectTrigger>
               <SelectContent>
-                {mockTables
+                {tables
                   .filter((t) => t.id !== selectedTable)
                   .map((table) => (
                     <SelectItem key={table.id} value={table.id}>

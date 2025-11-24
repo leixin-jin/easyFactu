@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { z } from "zod";
 
 import { getDb } from "@/lib/db";
 import { menuItems, orderItems, orders, restaurantTables } from "@/db/schema";
+import { parseMoney, toMoneyString } from "@/lib/money";
+import { buildOrderBatches, type OrderItemRow } from "@/lib/order-utils";
 
 const orderItemInputSchema = z.object({
   menuItemId: z.string().uuid(),
   quantity: z.number().int().positive(),
-  price: z.number().nonnegative(),
   notes: z.string().max(500).optional().nullable(),
 });
 
@@ -17,16 +18,6 @@ const orderCreateSchema = z.object({
   items: z.array(orderItemInputSchema).min(1),
   paymentMethod: z.string().min(1).optional(),
 });
-
-function parseNumeric(value: unknown): number {
-  if (value == null) return 0;
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const n = parseFloat(value);
-    return Number.isNaN(n) ? 0 : n;
-  }
-  return 0;
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,14 +57,43 @@ export async function POST(req: NextRequest) {
         .set({ status: "occupied" })
         .where(eq(restaurantTables.id, tableId));
 
+      const menuItemIds = Array.from(new Set(items.map((item) => item.menuItemId)));
+
+      const menuRows = await tx
+        .select({
+          id: menuItems.id,
+          price: menuItems.price,
+        })
+        .from(menuItems)
+        .where(inArray(menuItems.id, menuItemIds));
+
+      const priceById = new Map<string, number>();
+      for (const row of menuRows) {
+        priceById.set(row.id, parseMoney(row.price));
+      }
+
+      let itemsSubtotal = 0;
+      for (const item of items) {
+        const unitPrice = priceById.get(item.menuItemId);
+        if (unitPrice == null) {
+          return NextResponse.json(
+            {
+              error: "Menu item not found",
+              code: "MENU_ITEM_NOT_FOUND",
+              detail: { menuItemId: item.menuItemId },
+            },
+            { status: 400 },
+          );
+        }
+        itemsSubtotal += unitPrice * item.quantity;
+      }
+
       const [existingOrder] = await tx
         .select()
         .from(orders)
         .where(and(eq(orders.tableId, tableId), eq(orders.status, "open")))
         .orderBy(asc(orders.createdAt))
         .limit(1);
-
-      const itemsSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
       let currentOrder = existingOrder;
 
@@ -84,20 +104,19 @@ export async function POST(req: NextRequest) {
             tableId,
             status: "open",
             paymentMethod: paymentMethod ?? null,
-            subtotal: itemsSubtotal.toFixed(2),
+            subtotal: toMoneyString(itemsSubtotal),
             discount: "0",
-            total: itemsSubtotal.toFixed(2),
-            totalAmount: itemsSubtotal.toFixed(2),
+            total: toMoneyString(itemsSubtotal),
+            totalAmount: toMoneyString(itemsSubtotal),
             paidAmount: "0",
           })
           .returning();
 
         currentOrder = created;
       } else {
-        const existingSubtotal = parseNumeric(currentOrder.subtotal);
-        const existingDiscount = parseNumeric(currentOrder.discount);
-        const existingTotalAmount = parseNumeric(
-          // 旧数据可能没有 totalAmount，回退到 total
+        const existingSubtotal = parseMoney(currentOrder.subtotal);
+        const existingDiscount = parseMoney(currentOrder.discount);
+        const existingTotalAmount = parseMoney(
           (currentOrder as { totalAmount?: unknown }).totalAmount ??
             (currentOrder as { total?: unknown }).total ??
             0,
@@ -110,9 +129,9 @@ export async function POST(req: NextRequest) {
         await tx
           .update(orders)
           .set({
-            subtotal: newSubtotal.toFixed(2),
-            total: newTotal.toFixed(2),
-            totalAmount: newTotalAmount.toFixed(2),
+            subtotal: toMoneyString(newSubtotal),
+            total: toMoneyString(newTotal),
+            totalAmount: toMoneyString(newTotalAmount),
             paymentMethod: paymentMethod ?? currentOrder.paymentMethod,
           })
           .where(eq(orders.id, currentOrder.id));
@@ -128,21 +147,25 @@ export async function POST(req: NextRequest) {
       const nextBatchNo = (maxBatch ?? 0) + 1;
 
       await tx.insert(orderItems).values(
-        items.map((item) => ({
-          orderId: currentOrder.id,
-          menuItemId: item.menuItemId,
-          quantity: item.quantity,
-          price: item.price.toFixed(2),
-          notes: item.notes ?? null,
-          batchNo: nextBatchNo,
-        })),
+        items.map((item) => {
+          const unitPrice = priceById.get(item.menuItemId) ?? 0;
+          return {
+            orderId: currentOrder.id,
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+            price: toMoneyString(unitPrice),
+            notes: item.notes ?? null,
+            batchNo: nextBatchNo,
+          };
+        }),
       );
 
-      const rows = await tx
+      const rows: OrderItemRow[] = await tx
         .select({
           id: orderItems.id,
           batchNo: orderItems.batchNo,
           quantity: orderItems.quantity,
+          paidQuantity: orderItems.paidQuantity,
           price: orderItems.price,
           notes: orderItems.notes,
           createdAt: orderItems.createdAt,
@@ -155,45 +178,7 @@ export async function POST(req: NextRequest) {
         .where(eq(orderItems.orderId, currentOrder.id))
         .orderBy(asc(orderItems.batchNo), asc(orderItems.createdAt));
 
-      const batchesMap = new Map<
-        number,
-        {
-          batchNo: number;
-          items: Array<{
-            id: string;
-            menuItemId: string;
-            name: string;
-            nameEn: string;
-            quantity: number;
-            price: number;
-            notes: string | null;
-            createdAt: string;
-          }>;
-        }
-      >();
-
-      for (const row of rows) {
-        const batchNo = row.batchNo ?? 1;
-        if (!batchesMap.has(batchNo)) {
-          batchesMap.set(batchNo, {
-            batchNo,
-            items: [],
-          });
-        }
-        const batch = batchesMap.get(batchNo)!;
-        batch.items.push({
-          id: row.id,
-          menuItemId: row.menuItemId,
-          name: row.name ?? "",
-          nameEn: row.nameEn ?? "",
-          quantity: row.quantity,
-          price: typeof row.price === "string" ? parseFloat(row.price) : Number(row.price),
-          notes: row.notes ?? null,
-          createdAt: row.createdAt.toISOString(),
-        });
-      }
-
-      const batches = Array.from(batchesMap.values()).sort((a, b) => a.batchNo - b.batchNo);
+      const batches = buildOrderBatches(rows);
 
       return {
         order: {
@@ -202,21 +187,15 @@ export async function POST(req: NextRequest) {
           status: currentOrder.status,
           subtotal:
             currentOrder.subtotal != null
-              ? typeof currentOrder.subtotal === "string"
-                ? parseFloat(currentOrder.subtotal)
-                : Number(currentOrder.subtotal)
+              ? parseMoney(currentOrder.subtotal)
               : 0,
           discount:
             currentOrder.discount != null
-              ? typeof currentOrder.discount === "string"
-                ? parseFloat(currentOrder.discount)
-                : Number(currentOrder.discount)
+              ? parseMoney(currentOrder.discount)
               : 0,
           total:
             currentOrder.total != null
-              ? typeof currentOrder.total === "string"
-                ? parseFloat(currentOrder.total)
-                : Number(currentOrder.total)
+              ? parseMoney(currentOrder.total)
               : 0,
           paymentMethod: currentOrder.paymentMethod ?? null,
           createdAt: currentOrder.createdAt.toISOString(),
@@ -234,6 +213,18 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : String(err);
+    // 数据库唯一约束：同一桌台仅允许一个 open 订单
+    if (typeof err === "object" && err && "code" in err && (err as any).code === "23505") {
+      console.error("POST /api/orders unique open-order violation", err);
+      return NextResponse.json(
+        {
+          error: "Open order already exists for table",
+          code: "OPEN_ORDER_ALREADY_EXISTS",
+          detail: message,
+        },
+        { status: 409 },
+      );
+    }
     console.error("POST /api/orders error", err);
     return NextResponse.json(
       {
@@ -289,16 +280,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-      const rows = await db
-        .select({
-          id: orderItems.id,
-          batchNo: orderItems.batchNo,
-          quantity: orderItems.quantity,
-          paidQuantity: orderItems.paidQuantity,
-          price: orderItems.price,
-          notes: orderItems.notes,
-          createdAt: orderItems.createdAt,
-          menuItemId: orderItems.menuItemId,
+    const rows: OrderItemRow[] = await db
+      .select({
+        id: orderItems.id,
+        batchNo: orderItems.batchNo,
+        quantity: orderItems.quantity,
+        paidQuantity: orderItems.paidQuantity,
+        price: orderItems.price,
+        notes: orderItems.notes,
+        createdAt: orderItems.createdAt,
+        menuItemId: orderItems.menuItemId,
         name: menuItems.name,
         nameEn: menuItems.nameEn,
       })
@@ -307,52 +298,7 @@ export async function GET(req: NextRequest) {
       .where(eq(orderItems.orderId, currentOrder.id))
       .orderBy(asc(orderItems.batchNo), asc(orderItems.createdAt));
 
-    const batchesMap = new Map<
-      number,
-      {
-        batchNo: number;
-        items: Array<{
-          id: string;
-          menuItemId: string;
-          name: string;
-          nameEn: string;
-          quantity: number;
-          price: number;
-          notes: string | null;
-          createdAt: string;
-        }>;
-      }
-    >();
-
-      for (const row of rows) {
-        const batchNo = row.batchNo ?? 1;
-        if (!batchesMap.has(batchNo)) {
-          batchesMap.set(batchNo, {
-            batchNo,
-            items: [],
-          });
-        }
-
-        const effectiveQuantity =
-          row.quantity - (row.paidQuantity ?? 0);
-        if (effectiveQuantity <= 0) {
-          continue;
-        }
-
-        const batch = batchesMap.get(batchNo)!;
-        batch.items.push({
-          id: row.id,
-          menuItemId: row.menuItemId,
-          name: row.name ?? "",
-          nameEn: row.nameEn ?? "",
-          quantity: effectiveQuantity,
-          price: typeof row.price === "string" ? parseFloat(row.price) : Number(row.price),
-          notes: row.notes ?? null,
-          createdAt: row.createdAt.toISOString(),
-        });
-    }
-
-    const batches = Array.from(batchesMap.values()).sort((a, b) => a.batchNo - b.batchNo);
+    const batches = buildOrderBatches(rows, { omitFullyPaid: true });
 
     return NextResponse.json(
       {
@@ -360,13 +306,13 @@ export async function GET(req: NextRequest) {
           id: currentOrder.id,
           tableId: currentOrder.tableId,
           status: currentOrder.status,
-          subtotal: parseNumeric(currentOrder.subtotal),
-          discount: parseNumeric(currentOrder.discount),
-          total: parseNumeric(currentOrder.total),
-          totalAmount: parseNumeric(
+          subtotal: parseMoney(currentOrder.subtotal),
+          discount: parseMoney(currentOrder.discount),
+          total: parseMoney(currentOrder.total),
+          totalAmount: parseMoney(
             (currentOrder as { totalAmount?: unknown }).totalAmount,
           ),
-          paidAmount: parseNumeric(
+          paidAmount: parseMoney(
             (currentOrder as { paidAmount?: unknown }).paidAmount,
           ),
           paymentMethod: currentOrder.paymentMethod ?? null,

@@ -3,16 +3,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
 import { orders, restaurantTables } from "@/db/schema";
-
-function parseNumeric(value: unknown): number {
-  if (value == null) return 0;
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const n = parseFloat(value);
-    return Number.isNaN(n) ? 0 : n;
-  }
-  return 0;
-}
+import { parseMoney } from "@/lib/money";
 
 export async function GET() {
   try {
@@ -35,8 +26,8 @@ export async function GET() {
       );
 
     const mapped = rows.map((row) => {
-      const totalAmount = parseNumeric(row.orderTotalAmount);
-      const paidAmount = parseNumeric(row.orderPaidAmount);
+      const totalAmount = parseMoney(row.orderTotalAmount);
+      const paidAmount = parseMoney(row.orderPaidAmount);
 
       const outstanding = Math.max(0, totalAmount - paidAmount);
 

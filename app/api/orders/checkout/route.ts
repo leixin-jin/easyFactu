@@ -10,6 +10,7 @@ import {
   restaurantTables,
   transactions,
 } from "@/db/schema";
+import { parseMoney, toMoneyString } from "@/lib/money";
 
 const checkoutModeSchema = z.enum(["full", "aa"]);
 
@@ -33,13 +34,7 @@ const checkoutBodySchema = z.object({
 });
 
 function parseNumeric(value: unknown): number {
-  if (value == null) return 0;
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const n = parseFloat(value);
-    return Number.isNaN(n) ? 0 : n;
-  }
-  return 0;
+  return parseMoney(value);
 }
 
 export async function POST(req: NextRequest) {

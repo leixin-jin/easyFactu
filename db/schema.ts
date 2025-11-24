@@ -10,6 +10,7 @@ import {
   numeric,
   pgEnum,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -106,6 +107,9 @@ export const orders = pgTable(
   (t) => ({
     statusIdx: index("orders_status_idx").on(t.status),
     tableIdx: index("orders_table_id_idx").on(t.tableId),
+    uniqueOpenOrderPerTableIdx: uniqueIndex("uniq_open_order_per_table")
+      .on(t.tableId)
+      .where(sql`${t.status} = 'open'`),
   }),
 );
 

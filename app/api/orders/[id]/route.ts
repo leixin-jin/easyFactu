@@ -4,20 +4,12 @@ import { z } from "zod";
 
 import { getDb } from "@/lib/db";
 import { menuItems, orderItems, orders } from "@/db/schema";
+import { parseMoney, toMoneyString } from "@/lib/money";
+import { buildOrderBatches, type OrderItemRow } from "@/lib/order-utils";
 
 const patchBodySchema = z.object({
   type: z.enum(["decrement", "remove"]),
 });
-
-function parseNumeric(value: unknown): number {
-  if (value == null) return 0;
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const n = parseFloat(value);
-    return Number.isNaN(n) ? 0 : n;
-  }
-  return 0;
-}
 
 export async function PATCH(
   req: NextRequest,
@@ -83,10 +75,10 @@ export async function PATCH(
         );
       }
 
-      const priceValue = parseNumeric(item.price);
-      const existingSubtotal = parseNumeric(currentOrder.subtotal);
-      const existingDiscount = parseNumeric(currentOrder.discount);
-      const existingTotalAmount = parseNumeric(
+      const priceValue = parseMoney(item.price);
+      const existingSubtotal = parseMoney(currentOrder.subtotal);
+      const existingDiscount = parseMoney(currentOrder.discount);
+      const existingTotalAmount = parseMoney(
         (currentOrder as { totalAmount?: unknown }).totalAmount ??
           (currentOrder as { total?: unknown }).total ??
           0,
@@ -162,13 +154,13 @@ export async function PATCH(
       await tx
         .update(orders)
         .set({
-          subtotal: newSubtotal.toFixed(2),
-          total: newTotal.toFixed(2),
-          totalAmount: newTotalAmount.toFixed(2),
+          subtotal: toMoneyString(newSubtotal),
+          total: toMoneyString(newTotal),
+          totalAmount: toMoneyString(newTotalAmount),
         })
         .where(eq(orders.id, currentOrder.id));
 
-      const rows = await tx
+      const rows: OrderItemRow[] = await tx
         .select({
           id: orderItems.id,
           batchNo: orderItems.batchNo,
@@ -186,57 +178,7 @@ export async function PATCH(
         .where(eq(orderItems.orderId, currentOrder.id))
         .orderBy(asc(orderItems.batchNo), asc(orderItems.createdAt));
 
-      const batchesMap = new Map<
-        number,
-        {
-          batchNo: number;
-          items: Array<{
-            id: string;
-            menuItemId: string;
-            name: string;
-            nameEn: string;
-            quantity: number;
-            price: number;
-            notes: string | null;
-            createdAt: string;
-          }>;
-        }
-      >();
-
-      for (const row of rows) {
-        const batchNo = row.batchNo ?? 1;
-        if (!batchesMap.has(batchNo)) {
-          batchesMap.set(batchNo, {
-            batchNo,
-            items: [],
-          });
-        }
-
-        const effectiveQuantity =
-          row.quantity - (row.paidQuantity ?? 0);
-        if (effectiveQuantity <= 0) {
-          continue;
-        }
-
-        const batch = batchesMap.get(batchNo)!;
-        batch.items.push({
-          id: row.id,
-          menuItemId: row.menuItemId,
-          name: row.name ?? "",
-          nameEn: row.nameEn ?? "",
-          quantity: effectiveQuantity,
-          price:
-            typeof row.price === "string"
-              ? parseFloat(row.price)
-              : Number(row.price),
-          notes: row.notes ?? null,
-          createdAt: row.createdAt.toISOString(),
-        });
-      }
-
-      const batches = Array.from(batchesMap.values()).sort(
-        (a, b) => a.batchNo - b.batchNo,
-      );
+      const batches = buildOrderBatches(rows, { omitFullyPaid: true });
 
       return {
         order: {
@@ -247,7 +189,7 @@ export async function PATCH(
           discount: existingDiscount,
           total: newTotal,
           totalAmount: newTotalAmount,
-          paidAmount: parseNumeric(
+          paidAmount: parseMoney(
             (currentOrder as { paidAmount?: unknown }).paidAmount,
           ),
           paymentMethod: currentOrder.paymentMethod ?? null,
