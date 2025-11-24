@@ -60,13 +60,18 @@ export function buildOrderBatches(
     const batch = batchesMap.get(batchNo)!
     const price = parseMoney(row.price)
 
-    let createdAt: string
-    if (row.createdAt instanceof Date) {
-      createdAt = row.createdAt.toISOString()
-    } else {
-      const d = new Date(row.createdAt as any)
-      createdAt = Number.isNaN(d.getTime()) ? String(row.createdAt) : d.toISOString()
-    }
+    const createdAtInput = row.createdAt
+    const parsedDate =
+      createdAtInput instanceof Date
+        ? createdAtInput
+        : typeof createdAtInput === "string" || typeof createdAtInput === "number"
+          ? new Date(createdAtInput)
+          : null
+
+    const createdAt =
+      parsedDate && !Number.isNaN(parsedDate.getTime())
+        ? parsedDate.toISOString()
+        : String(createdAtInput)
 
     batch.items.push({
       id: row.id,

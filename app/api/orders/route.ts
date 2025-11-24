@@ -213,8 +213,12 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : String(err);
+    const errorCode =
+      typeof err === "object" && err && "code" in err
+        ? (err as { code?: unknown }).code
+        : undefined;
     // 数据库唯一约束：同一桌台仅允许一个 open 订单
-    if (typeof err === "object" && err && "code" in err && (err as any).code === "23505") {
+    if (typeof errorCode === "string" && errorCode === "23505") {
       console.error("POST /api/orders unique open-order violation", err);
       return NextResponse.json(
         {

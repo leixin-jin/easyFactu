@@ -163,7 +163,6 @@ export function TableManagement() {
   // reservation and locking features removed
 
   const {
-    tables,
     loading,
     error,
     reload,

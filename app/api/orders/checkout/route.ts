@@ -10,7 +10,7 @@ import {
   restaurantTables,
   transactions,
 } from "@/db/schema";
-import { parseMoney, toMoneyString } from "@/lib/money";
+import { parseMoney } from "@/lib/money";
 
 const checkoutModeSchema = z.enum(["full", "aa"]);
 
