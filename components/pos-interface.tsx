@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -16,27 +14,19 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Search,
-  Plus,
-  Minus,
-  Trash2,
-  ShoppingCart,
-  Receipt,
-  Printer,
-  Copy,
-  Split,
-  ArrowLeft,
-  DivideCircle,
-} from "lucide-react"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { useMenuData } from "@/hooks/useMenuData"
 import { useToast } from "@/hooks/use-toast"
+import {
+  type RestaurantTableView as TableOption,
+  useRestaurantTables,
+} from "@/hooks/useRestaurantTables"
+import { PosMenuPane } from "@/components/PosMenuPane"
+import { PosOrderSidebar } from "@/components/PosOrderSidebar"
+import { PosCheckoutDialog } from "@/components/PosCheckoutDialog"
 
-interface MenuItem {
+export interface MenuItem {
   id: string
   name: string
   nameEn: string
@@ -48,7 +38,7 @@ interface MenuItem {
   spicy?: number
 }
 
-interface CartItem extends MenuItem {
+export interface CartItem extends MenuItem {
   quantity: number
   notes?: string
 }
@@ -64,7 +54,7 @@ interface OrderItemView {
   createdAt: string
 }
 
-interface OrderBatchView {
+export interface OrderBatchView {
   batchNo: number
   items: OrderItemView[]
 }
@@ -114,13 +104,6 @@ interface CheckoutReceiptData {
 
 // 分类改为从 /api/menu-items 获取（通过 useMenuData），已移除菜单 mock
 
-type TableStatus = "idle" | "occupied"
-interface TableOption {
-  id: string
-  number: string
-  status?: TableStatus
-}
-
 // 仅用于接口失败时的降级回退
 const mockTables: TableOption[] = [
   { id: "1", number: "A-01", status: "occupied" },
@@ -130,6 +113,23 @@ const mockTables: TableOption[] = [
   { id: "5", number: "B-02", status: "idle" },
 ]
 
+const errorCodeToMessage: Record<string, string> = {
+  SUBTOTAL_MISMATCH: "订单金额已在其他终端更新，请刷新后按最新金额重新结账。",
+  TOTAL_MISMATCH: "订单金额已在其他终端更新，请刷新后按最新金额重新结账。",
+  AA_QUANTITY_EXCEEDS_ORDER: "AA 份数超过订单中可分配的数量，请检查选择。",
+  AA_QUANTITY_CONFLICT: "AA 结账时菜品数量发生冲突，请刷新后重试。",
+  AA_ITEMS_REQUIRED: "AA 结账至少需要选择一项菜品。",
+  INSUFFICIENT_RECEIVED_AMOUNT: "收款金额不足，请确认实收金额大于等于应付金额。",
+  ITEM_FULLY_PAID: "该菜品已全部结清，无法再次修改或 AA。",
+  DECREMENT_BELOW_PAID_QUANTITY: "不能将数量减到已支付份数以下。",
+  REMOVE_PAID_ITEM_FORBIDDEN: "已支付或部分支付的菜品不能被移除。",
+  ORDER_NOT_OPEN: "订单已不在进行中状态，无法结账。",
+  ORDER_EMPTY: "当前订单没有任何菜品，无法结账。",
+  TABLE_NOT_FOUND: "未找到对应桌台，请刷新页面后重试。",
+  ORDER_NOT_FOUND: "未找到对应订单，请刷新页面后重试。",
+  OPEN_ORDER_ALREADY_EXISTS: "该桌台已存在进行中的订单，请刷新后重试。",
+}
+
 export function POSInterface() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -137,9 +137,12 @@ export function POSInterface() {
   const tableNumberParam = searchParams.get("tableNumber") || ""
 
   // 桌台列表（来自 API），失败时回退到 mock
-  const [tables, setTables] = useState<TableOption[]>([])
-  const [loadingTables, setLoadingTables] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const {
+    tables,
+    loading: loadingTables,
+    error: loadError,
+    reload: reloadTables,
+  } = useRestaurantTables({ fallback: mockTables })
 
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -179,33 +182,6 @@ export function POSInterface() {
 
   // 菜单与分类（仅来自 API，不再使用 mock 回退）
   const { items: menuItems, categories: menuCategories } = useMenuData()
-
-  // 加载桌台列表
-  async function loadTables() {
-    try {
-      setLoadingTables(true)
-      setLoadError(null)
-      const res = await fetch("/api/restaurant-tables", { cache: "no-store" })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: Array<{ id: string; number: string; status?: string | null }> = await res.json()
-      const mapped: TableOption[] = data.map((r) => ({
-        id: String(r.id),
-        number: r.number,
-        status: (r.status as TableStatus) ?? "idle",
-      }))
-      mapped.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: "base" }))
-      setTables(mapped)
-    } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : "加载失败")
-      setTables(mockTables)
-    } finally {
-      setLoadingTables(false)
-    }
-  }
-
-  useEffect(() => {
-    loadTables()
-  }, [])
 
   // 结账成功后在当前窗口内触发打印
   useEffect(() => {
@@ -450,7 +426,6 @@ export function POSInterface() {
           items: cart.map((item) => ({
             menuItemId: item.id,
             quantity: item.quantity,
-            price: item.price,
             notes: item.notes ?? undefined,
           })),
         }),
@@ -557,7 +532,7 @@ export function POSInterface() {
 
       let orderId = currentOrder?.id ?? null
 
-      // 如有未提交的草稿批次，先自动提交
+      // 如有未提交的草稿批次，先自动提交（当前通过入口约束，正常情况下 cart 已为空）
       if (cart.length > 0) {
         const res = await fetch("/api/orders", {
           method: "POST",
@@ -568,7 +543,6 @@ export function POSInterface() {
             items: cart.map((item) => ({
               menuItemId: item.id,
               quantity: item.quantity,
-              price: item.price,
               notes: item.notes ?? undefined,
             })),
           }),
@@ -623,8 +597,14 @@ export function POSInterface() {
       const checkoutData = await checkoutRes.json().catch(() => null)
 
       if (!checkoutRes.ok) {
+        const rawMessage = (checkoutData && (checkoutData.error as string)) || ""
+        const code = (checkoutData && (checkoutData.code as string)) || ""
+        const mapped = code && errorCodeToMessage[code]
         const message =
-          (checkoutData && (checkoutData.error as string)) || `结账失败 (${checkoutRes.status})`
+          mapped ||
+          rawMessage ||
+          (code ? `结账失败（错误码：${code}）` : `结账失败 (${checkoutRes.status})`)
+
         setOrderError(message)
         toast({
           title: "结账失败",
@@ -656,7 +636,7 @@ export function POSInterface() {
       setDiscount(0)
 
       // 刷新桌台列表，确保状态变为 idle
-      await loadTables()
+      await reloadTables()
 
       setPrintData({
         mode,
@@ -737,6 +717,14 @@ export function POSInterface() {
     if (!selectedTable || (cart.length === 0 && batches.length === 0)) {
       return
     }
+    if (cart.length > 0) {
+      toast({
+        title: "存在未提交菜品",
+        description: "当前还有未提交的菜品，请先点击「下单」后再进行 AA 结账。",
+        variant: "destructive",
+      })
+      return
+    }
     setReceivedAmount(0)
     setAaMode(true)
     setAaItems([])
@@ -794,370 +782,51 @@ export function POSInterface() {
   return (
     <>
       <div className="h-[calc(100vh-8rem)] flex gap-4 print:hidden">
-      {/* Left side - Menu */}
-      <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground text-balance">点单系统</h1>
-            <p className="text-muted-foreground mt-1">
-              {selectedTable
-                ? `当前桌台: ${tables.find((t) => t.id === selectedTable)?.number || "未知"}`
-                : tableNumberParam
-                ? `当前桌台: ${tableNumberParam}`
-                : "选择菜品并添加到订单"}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/tables">
-              <Button variant="outline" size="sm" className="gap-2">
-                <ArrowLeft className="w-4 h-4" /> 返回桌台
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="搜索菜品..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        {/* Categories */}
-        <Tabs
-          value={selectedCategory}
-          onValueChange={setSelectedCategory}
-          className="flex-1 flex flex-col overflow-hidden"
-        >
-          <TabsList className="w-full justify-start overflow-x-auto">
-            {menuCategories.map((category) => (
-              <TabsTrigger key={category.id} value={category.id} className="flex-shrink-0">
-                {category.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <TabsContent value={selectedCategory} className="flex-1 mt-4 overflow-hidden">
-            <ScrollArea className="h-full">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-4">
-                {filteredItems.map((item) => (
-                  <Card
-                    key={item.id}
-                    className="overflow-hidden cursor-pointer hover:border-primary transition-colors group"
-                    onClick={() => addToCart(item)}
-                  >
-                    <div className="aspect-square relative overflow-hidden bg-muted">
-                      <img
-                        src={item.image || "/placeholder.svg"}
-                        alt={item.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                      {item.popular && (
-                        <Badge className="absolute top-2 right-2 bg-destructive text-destructive-foreground">
-                          热销
-                        </Badge>
-                      )}
-                      {item.spicy && (
-                        <Badge className="absolute top-2 left-2 bg-destructive/80 text-destructive-foreground">
-                          {"🌶️".repeat(item.spicy)}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="p-3 space-y-1">
-                      <h3 className="font-medium text-foreground text-sm leading-tight">{item.name}</h3>
-                      <p className="text-xs text-muted-foreground">{item.nameEn}</p>
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-lg font-bold text-primary">€{item.price.toFixed(2)}</span>
-                        <Button
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            addToCart(item)
-                          }}
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
-      </div>
+      <PosMenuPane
+        selectedTable={selectedTable}
+        tables={tables}
+        tableNumberParam={tableNumberParam}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        selectedCategory={selectedCategory}
+        onCategoryChange={setSelectedCategory}
+        menuCategories={menuCategories}
+        filteredItems={filteredItems}
+        onAddToCart={addToCart}
+      />
 
       {/* Right side - Cart */}
-      <Card className="w-96 h-full flex flex-col bg-card border-border">
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">当前订单</h2>
-            </div>
-            <Badge variant="secondary">{totalItemsCount} 项</Badge>
-          </div>
+      <PosOrderSidebar
+        tables={tables}
+        loadingTables={loadingTables}
+        loadError={loadError}
+        selectedTable={selectedTable}
+        onSelectedTableChange={setSelectedTable}
+        totalItemsCount={totalItemsCount}
+        loadingOrder={loadingOrder}
+        batches={batches}
+        cart={cart}
+        onDecreasePersistedItem={handleDecreasePersistedItem}
+        onRemovePersistedItem={handleRemovePersistedItem}
+        onUpdateCartQuantity={updateQuantity}
+        onRemoveFromCart={removeFromCart}
+        subtotal={subtotal}
+        discount={discount}
+        discountAmount={discountAmount}
+        total={total}
+        orderError={orderError}
+        onSubmitBatch={handleSubmitBatch}
+        onOpenCheckout={handleOpenCheckout}
+        onClearOrder={handleClearOrder}
+        onAA={handleAA}
+        submittingBatch={submittingBatch}
+        clearingOrder={clearingOrder}
+        maxExistingBatchNo={maxExistingBatchNo}
+        onOpenSplit={() => setSplitTableDialog(true)}
+        onOpenMerge={() => setMergeTableDialog(true)}
+      />
 
-          {/* 选择桌台（来自 Supabase 数据）*/}
-          <Select value={selectedTable} onValueChange={setSelectedTable}>
-            <SelectTrigger>
-              <SelectValue placeholder="选择桌台" />
-            </SelectTrigger>
-            <SelectContent>
-              {tables.map((table) => (
-                <SelectItem key={table.id} value={table.id}>
-                  {table.number}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {loadingTables && (
-            <p className="mt-2 text-xs text-muted-foreground">正在加载桌台列表...</p>
-          )}
-          {loadError && !loadingTables && (
-            <p className="mt-2 text-xs text-destructive">
-              加载桌台失败，已使用本地默认桌台列表。
-            </p>
-          )}
-        </div>
-
-        {/* Cart items: 先展示已落库批次，再展示当前未提交批次 */}
-        <ScrollArea className="p-4 h-[300px]">
-          {loadingOrder ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-12 text-sm text-muted-foreground">
-              正在加载订单...
-            </div>
-          ) : batches.length === 0 && cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <ShoppingCart className="w-12 h-12 text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">当前订单为空</p>
-              <p className="text-sm text-muted-foreground mt-1">在左侧选择菜品并点击“下单”提交</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {batches.map((batch) => {
-                const isOddBatch = batch.batchNo % 2 === 1
-                const batchLabel = batch.batchNo === 1 ? "第 1 批下单" : `第 ${batch.batchNo} 批加菜`
-                const cardClassName = isOddBatch
-                  ? "p-3 bg-muted/30 border-border"
-                  : "p-3 bg-primary/5 border-primary/40"
-                const headerBadgeClassName = isOddBatch
-                  ? "text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
-                  : "text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary"
-                const batchTotalCount = batch.items.reduce((sum, item) => sum + item.quantity, 0)
-
-                return (
-                  <div key={batch.batchNo} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-muted-foreground">{batchLabel}</span>
-                      <span className={headerBadgeClassName}>共 {batchTotalCount} 项</span>
-                    </div>
-                    <div className="space-y-2">
-                      {batch.items.map((item) => (
-                        <Card key={item.id} className={cardClassName}>
-                          <div className="flex gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-2 mb-2">
-                                <h3 className="font-medium text-sm text-foreground truncate">{item.name}</h3>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 flex-shrink-0 text-destructive hover:text-destructive"
-                                  onClick={() => handleRemovePersistedItem(item.id)}
-                                  title="删除菜品"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </div>
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-xs text-muted-foreground">
-                                  单价 €{item.price.toFixed(2)}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-7 w-7 bg-transparent"
-                                    onClick={() => handleDecreasePersistedItem(item.id)}
-                                  >
-                                    <Minus className="w-3 h-3" />
-                                  </Button>
-                                  <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
-                                </div>
-                                <span className="text-sm font-bold text-foreground">
-                                  总价 €{(item.price * item.quantity).toFixed(2)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {cart.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-muted-foreground">
-                      第 {maxExistingBatchNo + 1} 批（未提交）
-                    </span>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
-                      草稿批次
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {cart.map((item) => (
-                      <Card key={item.id} className="p-3 bg-primary/5 border-primary/40">
-                        <div className="flex gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-2">
-                              <h3 className="font-medium text-sm text-foreground truncate">{item.name}</h3>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 flex-shrink-0 text-destructive hover:text-destructive"
-                                onClick={() => removeFromCart(item.id)}
-                                title="删除菜品"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-xs text-muted-foreground">
-                                单价 €{item.price.toFixed(2)}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-7 w-7 bg-transparent"
-                                  onClick={() => updateQuantity(item.id, -1)}
-                                >
-                                  <Minus className="w-3 h-3" />
-                                </Button>
-                                <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-7 w-7 bg-transparent"
-                                  onClick={() => updateQuantity(item.id, 1)}
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </Button>
-                              </div>
-                              <span className="text-sm font-bold text-foreground">
-                                总价 €{(item.price * item.quantity).toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </ScrollArea>
-
-        {orderError && (
-          <div className="px-4 pb-1 text-xs text-destructive">{orderError}</div>
-        )}
-
-        {/* Cart summary & actions: 固定底部，始终可见 */}
-        <div className="mt-auto p-4 border-t border-border space-y-3 bg-card">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">小计</span>
-              <span className="text-foreground">€{subtotal.toFixed(2)}</span>
-            </div>
-            {discount > 0 && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">折扣 ({discount}%)</span>
-                <span className="text-destructive">-€{discountAmount.toFixed(2)}</span>
-              </div>
-            )}
-            <Separator />
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-foreground">总计</span>
-              <span className="text-2xl font-bold text-primary">€{total.toFixed(2)}</span>
-            </div>
-          </div>
-
-          {/* 第一排：下单 + 结账 */}
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="secondary"
-              className="gap-2 bg-green-600 text-white hover:bg-green-700"
-              onClick={handleSubmitBatch}
-              disabled={submittingBatch || !selectedTable || cart.length === 0}
-            >
-              <Plus className="w-4 h-4" />
-              下单
-            </Button>
-            <Button
-              className="gap-2 bg-yellow-500 text-black hover:bg-yellow-600 disabled:!bg-yellow-500 disabled:!text-black disabled:!opacity-100 disabled:cursor-not-allowed"
-              onClick={handleOpenCheckout}
-              disabled={!selectedTable}
-            >
-              <Receipt className="w-4 h-4" />
-              结账
-            </Button>
-          </div>
-
-          {/* 第二排：清空 + AA 结账 */}
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="destructive"
-              className="gap-2"
-              onClick={handleClearOrder}
-              disabled={clearingOrder || (cart.length === 0 && batches.length === 0)}
-            >
-              <Trash2 className="w-4 h-4" />
-              清空
-            </Button>
-            <Button
-              className="gap-2 bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-50"
-              onClick={handleAA}
-              disabled={!selectedTable || (cart.length === 0 && batches.length === 0)}
-            >
-              <DivideCircle className="w-4 h-4" />
-              AA
-            </Button>
-          </div>
-
-          {/* 第三排：拆台 + 并台 */}
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              className="gap-1 text-xs bg-transparent"
-              onClick={() => setSplitTableDialog(true)}
-            >
-              <Split className="w-3 h-3" />
-              <span className="hidden sm:inline">拆台</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-1 text-xs bg-transparent"
-              onClick={() => setMergeTableDialog(true)}
-            >
-              <Copy className="w-3 h-3" />
-              <span className="hidden sm:inline">并台</span>
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Checkout Dialog */}
-      <Dialog
+      <PosCheckoutDialog
         open={checkoutDialog}
         onOpenChange={(open) => {
           setCheckoutDialog(open)
@@ -1170,345 +839,58 @@ export function POSInterface() {
             setAaQuantityInput(1)
           }
         }}
-      >
-        {/* 固定高度的三栏结账页面：宽度约为视口 80%，高度固定为视口高度减去上下间距 */}
-        <DialogContent className="w-[80vw] max-w-[80vw] sm:max-w-[80vw] h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>订单结账</DialogTitle>
-            <DialogDescription>
-              桌台: {tables.find((t) => t.id === selectedTable)?.number || tableNumberParam}
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* 三栏布局：左订单明细 / 中间汇总+AA预留 / 右侧结账方式 */}
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3 flex-1 min-h-0 overflow-hidden">
-            {/* 左侧：订单明细（绿色区域，可滚动） */}
-            <Card className="h-full min-h-0 bg-emerald-700/10 border-emerald-500/40 flex flex-col">
-              <div className="px-4 pt-4 pb-2 border-b border-emerald-500/30 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">订单明细</h3>
-                  <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
-                    按批次查看菜品与金额
-                  </p>
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 px-4 py-3 overflow-y-auto">
-                <div className="space-y-3 pb-2">
-                  {batches.length === 0 && cart.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">当前订单为空</p>
-                  ) : (
-                    <>
-                      {batches.map((batch) => (
-                        <div key={batch.batchNo} className="space-y-1">
-                          <div className="text-xs font-semibold text-emerald-900/80 dark:text-emerald-100/80">
-                            {batch.batchNo === 1 ? "第 1 批下单" : `第 ${batch.batchNo} 批加菜`}
-                          </div>
-                          {batch.items.map((item) => (
-                            <div
-                              key={item.id}
-                              className="flex items-center justify-between text-xs sm:text-sm text-emerald-950 dark:text-emerald-50"
-                            >
-                              <span className="truncate max-w-[10rem] sm:max-w-[12rem]">
-                                {item.name} x{item.quantity}
-                              </span>
-                              <span className="font-medium">
-                                €{(item.price * item.quantity).toFixed(2)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                      {cart.length > 0 && (
-                        <div className="space-y-1">
-                          <div className="text-xs font-semibold text-emerald-900/80 dark:text-emerald-100/80">
-                            第 {maxExistingBatchNo + 1} 批（未提交）
-                          </div>
-                          {cart.map((item) => (
-                            <div
-                              key={item.id}
-                              className="flex items-center justify-between text-xs sm:text-sm text-emerald-950 dark:text-emerald-50"
-                            >
-                              <span className="truncate max-w-[10rem] sm:max-w-[12rem]">
-                                {item.name} x{item.quantity}
-                              </span>
-                              <span className="font-medium">
-                                €{(item.price * item.quantity).toFixed(2)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </Card>
-
-            {/* 中间：订单总结 + AA 区域（上下各占 50%） */}
-            <Card className="h-full min-h-0 grid grid-rows-2">
-              {/* 上：订单总结（菜品 x 数量，可滚动） */}
-              <div className="p-4 border-b border-border flex flex-col min-h-0 overflow-y-auto">
-                <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-foreground">订单总结</h3>
-                  <p className="text-xs text-muted-foreground">按菜品汇总：菜品 × 数量</p>
-                </div>
-                <div className="space-y-2 pb-2 pr-2">
-                  {aggregatedItems.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">暂无菜品</p>
-                  ) : (
-                    aggregatedItems.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`w-full flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                          aaMode
-                            ? "cursor-pointer hover:border-primary hover:bg-primary/5"
-                            : "cursor-default border-border bg-background"
-                        } ${
-                          aaMode && aaItems.some((aa) => aa.id === item.id)
-                            ? "border-pink-500 bg-pink-50"
-                            : "border-border"
-                        }`}
-                        onClick={() => handleAggregatedItemClick(item)}
-                      >
-                        <span className="truncate max-w-[10rem] sm:max-w-[12rem] text-foreground">
-                          {item.name}
-                        </span>
-                        <span className="text-muted-foreground">x{item.quantity}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* 下：AA 分单区域 */}
-              <div className="p-4 flex flex-col min-h-0 bg-muted/40">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground">AA 分单</h3>
-                    <p className="text-xs text-muted-foreground">
-                      点击上方菜品选择要 AA 的内容
-                    </p>
-                  </div>
-                  {aaMode && aaItems.length > 0 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setAaItems([])}
-                    >
-                      清空
-                    </Button>
-                  )}
-                </div>
-                {!aaMode ? (
-                  <div className="flex-1 flex items-center justify-center">
-                    <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                      当前为整单结账模式。
-                      <br />
-                      如需按人分账，请关闭弹窗并点击底部「AA」按钮进入 AA 模式。
-                    </p>
-                  </div>
-                ) : aaItems.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center">
-                    <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                      在上方「订单总结」中点击菜品即可将其加入 AA 分单。
-                      <br />
-                      对于数量大于 1 的菜品，会弹出小窗口让你选择 AA 数量。
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-1">
-                    {aaItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs sm:text-sm"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate max-w-[10rem] sm:max-w-[12rem] text-foreground">
-                              {item.name}
-                            </span>
-                            <span className="font-medium text-foreground">
-                              €{(item.price * item.quantity).toFixed(2)}
-                            </span>
-                          </div>
-                          <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                            <span>
-                              单价 €{item.price.toFixed(2)} × {item.quantity}
-                            </span>
-                            <button
-                              type="button"
-                              className="underline-offset-2 hover:underline"
-                              onClick={() => {
-                                setAaQuantityTarget({
-                                  itemId: item.id,
-                                  name: item.name,
-                                  maxQuantity:
-                                    aggregatedItems.find((agg) => agg.id === item.id)?.quantity ??
-                                    item.quantity,
-                                  price: item.price,
-                                })
-                                setAaQuantityInput(item.quantity)
-                                setAaQuantityDialogOpen(true)
-                              }}
-                            >
-                              修改数量
-                            </button>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="ml-2 h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() =>
-                            setAaItems((prev) => prev.filter((aa) => aa.id !== item.id))
-                          }
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            {/* 右侧：结账方式与支付摘要 */}
-            <Card className="h-full min-h-0 flex flex-col p-4">
-              <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground mb-2">支付方式</h3>
-                  {/* 仅保留现金与刷卡两种方式 */}
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <Button
-                      type="button"
-                      variant={paymentMethod === "cash" ? "default" : "outline"}
-                      className="w-full"
-                      onClick={() => setPaymentMethod("cash")}
-                    >
-                      现金
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={paymentMethod === "card" ? "default" : "outline"}
-                      className="w-full"
-                      onClick={() => setPaymentMethod("card")}
-                    >
-                      刷卡
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="checkout-received">已收金额</Label>
-                  <Input
-                    id="checkout-received"
-                    type="number"
-                    min="0"
-                    value={receivedAmount === 0 ? "" : receivedAmount}
-                    onChange={(e) => {
-                      const value = Number(e.target.value)
-                      if (Number.isNaN(value) || value < 0) {
-                        setReceivedAmount(0)
-                      } else {
-                        setReceivedAmount(value)
-                      }
-                    }}
-                    placeholder="输入已收金额"
-                  />
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">应找</span>
-                    <span className="text-foreground">
-                      €{changeAmount.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="checkout-discount">折扣 (%)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="checkout-discount"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={discount === 0 ? "" : discount}
-                      onChange={(e) =>
-                        setDiscount(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
-                      }
-                      className="flex-1"
-                      placeholder="请输入折扣"
-                    />
-                    <Button type="button" variant="outline" onClick={() => setDiscount(10)}>
-                      10%
-                    </Button>
-                    <Button type="button" variant="outline" onClick={() => setDiscount(20)}>
-                      20%
-                    </Button>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">小计</span>
-                    <span className="text-foreground">
-                      €{checkoutSubtotal.toFixed(2)}
-                    </span>
-                  </div>
-                  {discount > 0 && checkoutSubtotal > 0 && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">折扣 ({discount}%)</span>
-                      <span className="text-destructive">
-                        -€{checkoutDiscountAmount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground">应付金额</span>
-                    <span className="text-2xl font-bold text-primary">
-                      €{checkoutTotal.toFixed(2)}
-                    </span>
-                  </div>
-                  {aaMode && (
-                    <p className="text-[11px] text-muted-foreground">
-                      当前金额基于 AA 分单计算，仅包含已加入 AA 的菜品。
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <DialogFooter className="pt-4 px-0 shrink-0">
-                <Button
-                  variant="outline"
-                  onClick={() => setCheckoutDialog(false)}
-                  disabled={checkoutLoading}
-                >
-                  取消
-                </Button>
-                <Button
-                  onClick={handleCheckout}
-                  className="gap-2"
-                  disabled={checkoutLoading || checkoutTotal <= 0}
-                >
-                  {checkoutLoading ? (
-                    "处理中..."
-                  ) : (
-                    <>
-                      <Printer className="w-4 h-4" />
-                      确认并打印
-                    </>
-                  )}
-                </Button>
-              </DialogFooter>
-            </Card>
-          </div>
-        </DialogContent>
-      </Dialog>
+        tables={tables}
+        selectedTable={selectedTable}
+        tableNumberParam={tableNumberParam}
+        batches={batches}
+        cart={cart}
+        maxExistingBatchNo={maxExistingBatchNo}
+        aggregatedItems={aggregatedItems}
+        aaMode={aaMode}
+        aaItems={aaItems}
+        onClearAAItems={() => setAaItems([])}
+        onAggregatedItemClick={handleAggregatedItemClick}
+        aaQuantityDialogOpen={aaQuantityDialogOpen}
+        aaQuantityTarget={aaQuantityTarget}
+        aaQuantityInput={aaQuantityInput}
+        onAaQuantityInputChange={setAaQuantityInput}
+        onConfirmAaQuantity={() => {
+          if (!aaQuantityTarget) return
+          const quantity = Math.min(
+            aaQuantityTarget.maxQuantity,
+            Math.max(1, aaQuantityInput || 1),
+          )
+          setAaItems((prev) => {
+            const existing = prev.find((aa) => aa.id === aaQuantityTarget.itemId)
+            const rest = prev.filter((aa) => aa.id !== aaQuantityTarget.itemId)
+            if (existing) {
+              return [...rest, { ...existing, quantity }]
+            }
+            return [...rest, { id: aaQuantityTarget.itemId, name: aaQuantityTarget.name, price: aaQuantityTarget.price, quantity }]
+          })
+          setAaQuantityDialogOpen(false)
+          setAaQuantityTarget(null)
+          setAaQuantityInput(1)
+        }}
+        onCancelAaQuantity={() => {
+          setAaQuantityDialogOpen(false)
+          setAaQuantityTarget(null)
+          setAaQuantityInput(1)
+        }}
+        paymentMethod={paymentMethod}
+        onPaymentMethodChange={setPaymentMethod}
+        receivedAmount={receivedAmount}
+        onReceivedAmountChange={setReceivedAmount}
+        changeAmount={changeAmount}
+        discount={discount}
+        onDiscountChange={setDiscount}
+        checkoutSubtotal={checkoutSubtotal}
+        checkoutDiscountAmount={checkoutDiscountAmount}
+        checkoutTotal={checkoutTotal}
+        currentOrderPaidAmount={currentOrder?.paidAmount ?? 0}
+        checkoutLoading={checkoutLoading}
+        onCheckout={handleCheckout}
+      />
 
       {/* removed: Hold Order Dialog */}
 
@@ -1603,7 +985,7 @@ export function POSInterface() {
                 <SelectValue placeholder="选择目标桌台" />
               </SelectTrigger>
               <SelectContent>
-                {mockTables
+                {tables
                   .filter((t) => t.id !== selectedTable)
                   .map((table) => (
                     <SelectItem key={table.id} value={table.id}>
@@ -1636,7 +1018,7 @@ export function POSInterface() {
                 <SelectValue placeholder="选择目标桌台" />
               </SelectTrigger>
               <SelectContent>
-                {mockTables
+                {tables
                   .filter((t) => t.id !== selectedTable)
                   .map((table) => (
                     <SelectItem key={table.id} value={table.id}>
@@ -1657,98 +1039,107 @@ export function POSInterface() {
     </div>
 
     {printData && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background text-foreground p-4 print:bg-white print:text-black">
-        <Card className="w-full max-w-sm border-border shadow-lg print:shadow-none print:border-0">
-          <div className="p-4 space-y-2">
-            <div className="text-center">
-              <h2 className="text-xl font-bold">
-                {printData.mode === "aa" ? "AA 分单小票" : "结账小票"}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1">
-                桌台 {printData.tableNumber} · 订单号 {printData.orderId}
-              </p>
-            </div>
-            <Separator />
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span>时间</span>
-                <span>{printData.paidAt}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>支付方式</span>
-                <span>{printData.paymentMethod === "card" ? "刷卡" : "现金"}</span>
-              </div>
-            </div>
-            <Separator />
-            <div className="max-h-60 overflow-y-auto">
-              {printData.items.map((item) => (
-                <div key={item.name} className="flex justify-between text-xs py-1">
-                  <div className="flex-1 pr-2">
-                    <div className="flex justify-between">
-                      <span className="truncate max-w-[8rem]">{item.name}</span>
-                      <span>x{item.quantity}</span>
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      单价 €{item.unitPrice.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="text-right text-xs font-medium">
-                    €{item.totalPrice.toFixed(2)}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Separator />
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>小计</span>
-                <span>€{printData.subtotal.toFixed(2)}</span>
-              </div>
-              {printData.discountPercent > 0 && (
-                <div className="flex justify-between text-xs">
-                  <span>折扣 ({printData.discountPercent}%)</span>
-                  <span>-€{printData.discountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-semibold">
-                <span>应付金额</span>
-                <span>€{printData.total.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span>实收</span>
-                <span>€{printData.receivedAmount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span>找零</span>
-                <span>€{printData.changeAmount.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="pt-2 flex justify-center gap-2 print:hidden">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setPrintData(null)
-                  setIsPrinting(false)
-                }}
-              >
-                返回 POS
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    window.print()
-                  }
-                }}
-              >
-                重新打印
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <PosReceiptPreview
+        data={printData}
+        onClose={() => {
+          setPrintData(null)
+          setIsPrinting(false)
+        }}
+        onPrint={() => {
+          if (typeof window !== "undefined") {
+            window.print()
+          }
+        }}
+      />
     )}
     </>
+  )
+}
+
+interface PosReceiptPreviewProps {
+  data: CheckoutReceiptData
+  onClose: () => void
+  onPrint: () => void
+}
+
+function PosReceiptPreview({ data, onClose, onPrint }: PosReceiptPreviewProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background text-foreground p-4 print:bg-white print:text-black">
+      <Card className="w-full max-w-sm border-border shadow-lg print:shadow-none print:border-0">
+        <div className="p-4 space-y-2">
+          <div className="text-center">
+            <h2 className="text-xl font-bold">
+              {data.mode === "aa" ? "AA 分单小票" : "结账小票"}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              桌台 {data.tableNumber} · 订单号 {data.orderId}
+            </p>
+          </div>
+          <Separator />
+          <div className="space-y-1 text-xs">
+            <div className="flex justify-between">
+              <span>时间</span>
+              <span>{data.paidAt}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>支付方式</span>
+              <span>{data.paymentMethod === "card" ? "刷卡" : "现金"}</span>
+            </div>
+          </div>
+          <Separator />
+          <div className="max-h-60 overflow-y-auto">
+            {data.items.map((item) => (
+              <div key={item.name} className="flex justify-between text-xs py-1">
+                <div className="flex-1 pr-2">
+                  <div className="flex justify-between">
+                    <span className="truncate max-w-[8rem]">{item.name}</span>
+                    <span>x{item.quantity}</span>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    单价 €{item.unitPrice.toFixed(2)}
+                  </div>
+                </div>
+                <div className="text-right text-xs font-medium">
+                  €{item.totalPrice.toFixed(2)}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Separator />
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span>小计</span>
+              <span>€{data.subtotal.toFixed(2)}</span>
+            </div>
+            {data.discountPercent > 0 && (
+              <div className="flex justify-between text-xs">
+                <span>折扣 ({data.discountPercent}%)</span>
+                <span>-€{data.discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-semibold">
+              <span>应付金额</span>
+              <span>€{data.total.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span>实收</span>
+              <span>€{data.receivedAmount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span>找零</span>
+              <span>€{data.changeAmount.toFixed(2)}</span>
+            </div>
+          </div>
+          <div className="pt-2 flex justify-center gap-2 print:hidden">
+            <Button variant="outline" size="sm" onClick={onClose}>
+              返回 POS
+            </Button>
+            <Button size="sm" onClick={onPrint}>
+              重新打印
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
   )
 }

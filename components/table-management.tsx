@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,22 +25,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useRouter } from "next/navigation"
-
-type TableStatus = "idle" | "occupied"
-
-interface Table {
-  id: string
-  number: string
-  area: string
-  capacity: number
-  status: TableStatus
-  currentGuests?: number
-  startTime?: string
-  duration?: string
-  amount?: number
-  waiter?: string
-  orderId?: string
-}
+import {
+  type RestaurantTableView as Table,
+  type TableStatus,
+  useRestaurantTables,
+} from "@/hooks/useRestaurantTables"
 
 // NOTE: mock data kept for fallback only. Primary source is API.
 const mockTables: Table[] = [
@@ -171,92 +160,23 @@ export function TableManagement() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState<TableStatus | "all">("all")
   const [filterArea, setFilterArea] = useState<string>("all")
-  // Dialog and selected state removed to keep lints minimal
-  const [tables, setTables] = useState<Table[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   // reservation and locking features removed
 
-  // Fetch tables from API
-  async function loadTables() {
-    try {
-      setLoading(true)
-      setError(null)
-      const res = await fetch("/api/restaurant-tables", { cache: "no-store" })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: Array<{
-        id: string
-        number: string
-        area?: string | null
-        capacity?: number | null
-        status: string
-        amount?: number | null
-      }> = await res.json()
-      const mapped: Table[] = data.map((r) => ({
-        id: String(r.id),
-        number: r.number,
-        area: r.area ?? "",
-        capacity: (r.capacity ?? 0) as number,
-        status: (r.status as TableStatus) ?? "idle",
-        amount: typeof r.amount === "number" ? r.amount : undefined,
-      }))
-      setTables(mapped)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "加载失败")
-      // Fallback to mock when API fails
-      setTables(mockTables)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadTables()
-  }, [])
-
-  const areas = useMemo(
-    () => ["all", ...Array.from(new Set(tables.map((t) => t.area)))],
-    [tables],
-  )
-
-  const filteredTables = tables.filter((table) => {
-    const matchesSearch =
-      table.number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      table.area.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = filterStatus === "all" || table.status === filterStatus
-    const matchesArea = filterArea === "all" || table.area === filterArea
-    return matchesSearch && matchesStatus && matchesArea
+  const {
+    loading,
+    error,
+    reload,
+    areas,
+    sortedTables,
+    groupedTablesByArea,
+  } = useRestaurantTables({
+    fallback: mockTables,
+    filters: {
+      search: searchQuery,
+      status: filterStatus,
+      area: filterArea,
+    },
   })
-
-  // 固定排序：先按区域，再按桌号（自然排序）。
-  const collator = useMemo(
-    () => new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }),
-    [],
-  )
-  const sortedTables = useMemo(() => {
-    const arr = filteredTables.slice()
-    arr.sort(
-      (a, b) =>
-        collator.compare(a.area || "", b.area || "") ||
-        collator.compare(a.number || "", b.number || ""),
-    )
-    return arr
-  }, [filteredTables, collator])
-
-  // 按区域分组，保证同一区域的桌台在一起显示
-  const groupedTablesByArea = useMemo(() => {
-    const groups = new Map<string, Table[]>()
-    for (const table of sortedTables) {
-      const key = table.area || "未分区"
-      const existing = groups.get(key)
-      if (existing) {
-        existing.push(table)
-      } else {
-        groups.set(key, [table])
-      }
-    }
-    return Array.from(groups.entries())
-  }, [sortedTables])
 
   // Stats and open-table dialog handlers can be reintroduced when needed
 
@@ -284,7 +204,7 @@ export function TableManagement() {
       {error && (
         <Card className="p-4 border-red-200 bg-red-50 text-sm text-red-700">
           <div>数据加载失败：{error}</div>
-          <Button className="mt-3" variant="outline" onClick={loadTables}>
+          <Button className="mt-3" variant="outline" onClick={reload}>
             重试
           </Button>
         </Card>
