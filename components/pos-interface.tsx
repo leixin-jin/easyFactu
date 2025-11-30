@@ -1,9 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -12,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -22,85 +20,17 @@ import {
   type RestaurantTableView as TableOption,
   useRestaurantTables,
 } from "@/hooks/useRestaurantTables"
+import { useCheckout } from "@/hooks/useCheckout"
+import { usePosOrder } from "@/hooks/usePosOrder"
 import { PosMenuPane } from "@/components/PosMenuPane"
 import { PosOrderSidebar } from "@/components/PosOrderSidebar"
 import { PosCheckoutDialog } from "@/components/PosCheckoutDialog"
-
-export interface MenuItem {
-  id: string
-  name: string
-  nameEn: string
-  category: string
-  price: number
-  image: string
-  available: boolean
-  popular?: boolean
-  spicy?: number
-}
-
-export interface CartItem extends MenuItem {
-  quantity: number
-  notes?: string
-}
-
-interface OrderItemView {
-  id: string
-  menuItemId: string
-  name: string
-  nameEn: string
-  price: number
-  quantity: number
-  notes: string | null
-  createdAt: string
-}
-
-export interface OrderBatchView {
-  batchNo: number
-  items: OrderItemView[]
-}
-
-interface CurrentOrderSummary {
-  id: string
-  tableId: string | null
-  status: string
-  subtotal: number
-  discount: number
-  total: number
-  totalAmount?: number
-  paidAmount?: number
-  paymentMethod: string | null
-  createdAt: string
-  closedAt: string | null
-}
-
-interface AAItemSelection {
-  id: string
-  name: string
-  price: number
-  quantity: number
-}
-
-interface ReceiptItem {
-  name: string
-  quantity: number
-  unitPrice: number
-  totalPrice: number
-}
-
-interface CheckoutReceiptData {
-  mode: "full" | "aa"
-  orderId: string
-  tableNumber: string
-  paidAt: string
-  paymentMethod: string
-  subtotal: number
-  discountPercent: number
-  discountAmount: number
-  total: number
-  receivedAmount: number
-  changeAmount: number
-  items: ReceiptItem[]
-}
+import type {
+  CartItem,
+  CheckoutReceiptData,
+  MenuItem,
+  ReceiptItem,
+} from "@/types/pos"
 
 // 分类改为从 /api/menu-items 获取（通过 useMenuData），已移除菜单 mock
 
@@ -150,35 +80,44 @@ export function POSInterface() {
   const [cart, setCart] = useState<CartItem[]>([])
   // 当前选中桌台及其订单
   const [selectedTable, setSelectedTable] = useState<string>("")
-  const [currentOrder, setCurrentOrder] = useState<CurrentOrderSummary | null>(null)
-  const [batches, setBatches] = useState<OrderBatchView[]>([])
-  const [loadingOrder, setLoadingOrder] = useState(false)
-  const [orderError, setOrderError] = useState<string | null>(null)
-  const [submittingBatch, setSubmittingBatch] = useState(false)
-  const [clearingOrder, setClearingOrder] = useState(false)
-
-  const [checkoutDialog, setCheckoutDialog] = useState(false)
-  const [checkoutLoading, setCheckoutLoading] = useState(false)
-  const [discount, setDiscount] = useState(0)
-  const [paymentMethod, setPaymentMethod] = useState("cash")
   const [splitTableDialog, setSplitTableDialog] = useState(false)
   const [mergeTableDialog, setMergeTableDialog] = useState(false)
-  const [receivedAmount, setReceivedAmount] = useState(0)
-  const [aaMode, setAaMode] = useState(false)
-  const [aaItems, setAaItems] = useState<AAItemSelection[]>([])
-  const [aaQuantityDialogOpen, setAaQuantityDialogOpen] = useState(false)
-  const [aaQuantityTarget, setAaQuantityTarget] = useState<{
-    itemId: string
-    name: string
-    maxQuantity: number
-    price: number
-  } | null>(null)
-  const [aaQuantityInput, setAaQuantityInput] = useState(1)
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [, setOperationStatus] = useState<"closed" | "open" | "pending">("closed")
   const [printData, setPrintData] = useState<CheckoutReceiptData | null>(null)
   const [isPrinting, setIsPrinting] = useState(false)
 
   const { toast } = useToast()
+
+  const {
+    currentOrder,
+    batches,
+    loadingOrder,
+    orderError,
+    submittingBatch,
+    clearingOrder,
+    maxExistingBatchNo,
+    setOrderError,
+    submitBatch,
+    clearOrder,
+    decreasePersistedItem,
+    removePersistedItem,
+    applyOrderState,
+  } = usePosOrder(selectedTable)
+
+  const {
+    state: checkoutState,
+    aggregatedItems,
+    subtotal,
+    discountAmount,
+    total,
+    checkoutSubtotal,
+    checkoutDiscountAmount,
+    checkoutTotal,
+    changeAmount,
+    totalItemsCount,
+    actions: checkoutActions,
+  } = useCheckout({ batches, cart })
 
   // 菜单与分类（仅来自 API，不再使用 mock 回退）
   const { items: menuItems, categories: menuCategories } = useMenuData()
@@ -195,40 +134,6 @@ export function POSInterface() {
     }, 0)
     return () => clearTimeout(timer)
   }, [isPrinting, printData, router])
-
-  // 加载指定桌台当前开放订单及批次
-  async function loadOrderForTable(tableId: string) {
-    if (!tableId) {
-      setCurrentOrder(null)
-      setBatches([])
-      setOrderError(null)
-      return
-    }
-    try {
-      setLoadingOrder(true)
-      setOrderError(null)
-      const res = await fetch(`/api/orders?tableId=${encodeURIComponent(tableId)}`, { cache: "no-store" })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        const message = (data && (data.error as string)) || `加载订单失败 (${res.status})`
-        throw new Error(message)
-      }
-      setCurrentOrder(data.order ?? null)
-      setBatches(data.batches ?? [])
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "加载订单失败"
-      setCurrentOrder(null)
-      setBatches([])
-      setOrderError(message)
-      toast({
-        title: "加载订单失败",
-        description: message,
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingOrder(false)
-    }
-  }
 
   // 基于 URL 参数在表加载后设定初始选中项
   useEffect(() => {
@@ -247,17 +152,6 @@ export function POSInterface() {
       }
     }
   }, [byIdParam, tableNumberParam, tables])
-
-  // 当选中桌台变更时加载该桌台的当前订单
-  useEffect(() => {
-    if (!selectedTable) {
-      setCurrentOrder(null)
-      setBatches([])
-      setOrderError(null)
-      return
-    }
-    loadOrderForTable(selectedTable)
-  }, [selectedTable])
 
   const filteredItems = menuItems.filter((item) => {
     const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
@@ -290,168 +184,30 @@ export function POSInterface() {
     setCart(cart.filter((item) => item.id !== id))
   }
 
-  const existingSubtotal = useMemo(
-    () =>
-      batches.reduce(
-        (batchSum, batch) =>
-          batchSum +
-          batch.items.reduce((itemSum, item) => itemSum + item.price * item.quantity, 0),
-        0,
-      ),
-    [batches],
-  )
-
-  const draftSubtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const subtotal = existingSubtotal + draftSubtotal
-  const discountAmount = (subtotal * discount) / 100
-  const total = subtotal - discountAmount
-
-  // 订单汇总：用于“菜品 × 数量”显示（结账中间区域）
-  const aggregatedItems = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; quantity: number; price: number }>()
-
-    const addItem = (id: string, name: string, quantity: number, price: number) => {
-      if (!id) return
-      const existing = map.get(id)
-      if (existing) {
-        existing.quantity += quantity
-      } else {
-        map.set(id, { id, name, quantity, price })
-      }
-    }
-
-    batches.forEach((batch) => {
-      batch.items.forEach((item) => {
-        addItem(item.menuItemId, item.name, item.quantity, item.price)
-      })
-    })
-
-    cart.forEach((item) => {
-      addItem(item.id, item.name, item.quantity, item.price)
-    })
-
-    return Array.from(map.values())
-  }, [batches, cart])
-
-  const totalItemsCount =
-    batches.reduce(
-      (batchSum, batch) =>
-        batchSum + batch.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
-      0,
-    ) + cart.reduce((sum, item) => sum + item.quantity, 0)
-
-  const maxExistingBatchNo = batches.length > 0 ? Math.max(...batches.map((b) => b.batchNo)) : 0
-
-  const aaSubtotal = useMemo(
-    () => aaItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
-    [aaItems],
-  )
-
-  // 结账弹窗右侧金额：AA 模式下只按 AA 分单计算；普通模式下使用整单金额
-  const checkoutSubtotal = aaMode ? aaSubtotal : subtotal
-  const checkoutDiscountAmount = (checkoutSubtotal * discount) / 100
-  const checkoutTotal = checkoutSubtotal - checkoutDiscountAmount
-  const changeAmount = receivedAmount > 0 ? receivedAmount - checkoutTotal : 0
-
-  async function updatePersistedItem(itemId: string, type: "decrement" | "remove") {
-    if (!selectedTable) {
-      toast({
-        title: "请先选择桌台",
-        description: "请选择右侧的桌台后再进行减菜操作。",
-        variant: "destructive",
-      })
-      return
-    }
-    try {
-      setLoadingOrder(true)
-      setOrderError(null)
-      const res = await fetch(`/api/orders/${encodeURIComponent(itemId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        const message = (data && (data.error as string)) || `更新订单失败 (${res.status})`
-        throw new Error(message)
-      }
-      setCurrentOrder(data.order ?? null)
-      setBatches(data.batches ?? [])
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "更新订单失败"
-      setOrderError(message)
-      toast({
-        title: "更新订单失败",
-        description: message,
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingOrder(false)
-    }
-  }
-
   const handleDecreasePersistedItem = (itemId: string) => {
-    updatePersistedItem(itemId, "decrement")
+    decreasePersistedItem(itemId)
   }
 
   const handleRemovePersistedItem = (itemId: string) => {
-    updatePersistedItem(itemId, "remove")
+    removePersistedItem(itemId)
   }
 
+  const {
+    dialogOpen: checkoutDialog,
+    discountPercent,
+    paymentMethod,
+    receivedAmount,
+    aaMode,
+    aaItems,
+    aaQuantityDialogOpen,
+    aaQuantityTarget,
+    aaQuantityInput,
+  } = checkoutState
+
   const handleSubmitBatch = async () => {
-    if (!selectedTable) {
-      toast({
-        title: "未选择桌台",
-        description: "请先在右侧选择一个桌台，再提交下单。",
-        variant: "destructive",
-      })
-      return
-    }
-    if (cart.length === 0) {
-      toast({
-        title: "当前批次为空",
-        description: "请先在左侧选择菜品添加到当前批次。",
-      })
-      return
-    }
-    try {
-      setSubmittingBatch(true)
-      setOrderError(null)
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tableId: selectedTable,
-          paymentMethod,
-          items: cart.map((item) => ({
-            menuItemId: item.id,
-            quantity: item.quantity,
-            notes: item.notes ?? undefined,
-          })),
-        }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        const message = (data && (data.error as string)) || `下单失败 (${res.status})`
-        throw new Error(message)
-      }
-      setCurrentOrder(data.order ?? null)
-      setBatches(data.batches ?? [])
+    const success = await submitBatch(cart, paymentMethod)
+    if (success) {
       setCart([])
-      toast({
-        title: "下单成功",
-        description: "当前批次已成功提交到订单。",
-      })
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "下单失败"
-      setOrderError(message)
-      toast({
-        title: "下单失败",
-        description: message,
-        variant: "destructive",
-      })
-    } finally {
-      setSubmittingBatch(false)
     }
   }
 
@@ -467,19 +223,28 @@ export function POSInterface() {
       return
     }
 
-    if (aaMode && aaItems.length === 0) {
+    if (cart.length > 0) {
       toast({
-        title: "未选择 AA 菜品",
-        description: "请在中间的订单总结区域点击菜品，选择要 AA 结账的内容。",
+        title: "存在未提交菜品",
+        description: "请先点击「下单」提交草稿批次后再结账。",
         variant: "destructive",
       })
       return
     }
 
-    if (!currentOrder && cart.length === 0) {
+    if (!currentOrder || batches.length === 0) {
       toast({
         title: "当前订单为空",
         description: "请先添加菜品并下单后再进行结账。",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (aaMode && aaItems.length === 0) {
+      toast({
+        title: "未选择 AA 菜品",
+        description: "请在中间的订单总结区域点击菜品，选择要 AA 结账的内容。",
         variant: "destructive",
       })
       return
@@ -490,9 +255,7 @@ export function POSInterface() {
     const checkoutTotalValue = checkoutTotal
 
     const effectiveReceived =
-      receivedAmount != null && receivedAmount > 0
-        ? receivedAmount
-        : checkoutTotalValue
+      receivedAmount != null && receivedAmount > 0 ? receivedAmount : checkoutTotalValue
 
     if (checkoutTotalValue <= 0) {
       toast({
@@ -530,33 +293,7 @@ export function POSInterface() {
       setCheckoutLoading(true)
       setOrderError(null)
 
-      let orderId = currentOrder?.id ?? null
-
-      // 如有未提交的草稿批次，先自动提交（当前通过入口约束，正常情况下 cart 已为空）
-      if (cart.length > 0) {
-        const res = await fetch("/api/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tableId: selectedTable,
-            paymentMethod,
-            items: cart.map((item) => ({
-              menuItemId: item.id,
-              quantity: item.quantity,
-              notes: item.notes ?? undefined,
-            })),
-          }),
-        })
-        const data = await res.json().catch(() => null)
-        if (!res.ok) {
-          const message = (data && (data.error as string)) || `下单失败 (${res.status})`
-          throw new Error(message)
-        }
-        setCurrentOrder(data.order ?? null)
-        setBatches(data.batches ?? [])
-        setCart([])
-        orderId = data.order?.id ?? orderId
-      }
+      const orderId = currentOrder?.id ?? null
 
       if (!orderId) {
         const message = "未找到可结账的订单"
@@ -579,7 +316,7 @@ export function POSInterface() {
           orderId,
           mode,
           paymentMethod,
-          discountPercent: discount,
+          discountPercent,
           clientSubtotal: checkoutSubtotalValue,
           clientTotal: checkoutTotalValue,
           receivedAmount: effectiveReceived,
@@ -618,22 +355,13 @@ export function POSInterface() {
         tables.find((t) => t.id === selectedTable)?.number || tableNumberParam || ""
 
       if (aaMode) {
-        setCurrentOrder(checkoutData.order ?? null)
-        setBatches(checkoutData.batches ?? [])
+        applyOrderState({ order: checkoutData.order ?? null, batches: checkoutData.batches ?? [] })
       } else {
-        setCurrentOrder(null)
-        setBatches([])
+        applyOrderState({ order: null, batches: [] })
       }
 
-      // 结账成功：关闭弹窗并清理本次结账状态
-      setCheckoutDialog(false)
-      setAaMode(false)
-      setAaItems([])
-      setAaQuantityDialogOpen(false)
-      setAaQuantityTarget(null)
-      setAaQuantityInput(1)
-      setReceivedAmount(0)
-      setDiscount(0)
+      checkoutActions.resetCheckout()
+      setCart([])
 
       // 刷新桌台列表，确保状态变为 idle
       await reloadTables()
@@ -645,7 +373,7 @@ export function POSInterface() {
         paidAt: new Date().toLocaleString(),
         paymentMethod,
         subtotal: checkoutSubtotalValue,
-        discountPercent: discount,
+        discountPercent,
         discountAmount: checkoutDiscountAmountValue,
         total: checkoutTotalValue,
         receivedAmount: effectiveReceived,
@@ -672,44 +400,10 @@ export function POSInterface() {
   }
 
   const handleClearOrder = async () => {
-    if (!selectedTable) {
-      // 仅清空本地草稿视图
+    const cleared = await clearOrder()
+    if (cleared) {
       setCart([])
-      setBatches([])
-      setCurrentOrder(null)
-      setOrderError(null)
-      return
-    }
-    try {
-      setClearingOrder(true)
-      setOrderError(null)
-      const res = await fetch("/api/orders/clear", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tableId: selectedTable }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        const message = (data && (data.error as string)) || `清空订单失败 (${res.status})`
-        throw new Error(message)
-      }
-      setCurrentOrder(data.order ?? null)
-      setBatches(data.batches ?? [])
-      setCart([])
-      toast({
-        title: "订单已清空",
-        description: "当前桌台的订单已全部清空。",
-      })
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "清空订单失败"
-      setOrderError(message)
-      toast({
-        title: "清空订单失败",
-        description: message,
-        variant: "destructive",
-      })
-    } finally {
-      setClearingOrder(false)
+      checkoutActions.resetCheckout()
     }
   }
 
@@ -725,26 +419,38 @@ export function POSInterface() {
       })
       return
     }
-    setReceivedAmount(0)
-    setAaMode(true)
-    setAaItems([])
-    setAaQuantityDialogOpen(false)
-    setAaQuantityTarget(null)
-    setAaQuantityInput(1)
-    setCheckoutDialog(true)
+    if (!currentOrder || batches.length === 0) {
+      toast({
+        title: "当前订单为空",
+        description: "请先添加菜品并下单后再进行 AA 结账。",
+        variant: "destructive",
+      })
+      return
+    }
+    checkoutActions.openAACheckout()
   }
 
   const handleOpenCheckout = () => {
     if (!selectedTable) {
       return
     }
-    setReceivedAmount(0)
-    setAaMode(false)
-    setAaItems([])
-    setAaQuantityDialogOpen(false)
-    setAaQuantityTarget(null)
-    setAaQuantityInput(1)
-    setCheckoutDialog(true)
+    if (cart.length > 0) {
+      toast({
+        title: "存在未提交菜品",
+        description: "请先点击「下单」提交草稿批次后再结账。",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!currentOrder || batches.length === 0) {
+      toast({
+        title: "当前订单为空",
+        description: "请先添加菜品并下单后再进行结账。",
+        variant: "destructive",
+      })
+      return
+    }
+    checkoutActions.openFullCheckout()
   }
 
   const handleAggregatedItemClick = (item: {
@@ -753,30 +459,23 @@ export function POSInterface() {
     quantity: number
     price: number
   }) => {
-    if (!aaMode) {
-      return
-    }
+    checkoutActions.handleAggregatedItemSelection(item)
+  }
 
-    if (item.quantity <= 1) {
-      setAaItems((prev) => {
-        const existing = prev.find((aa) => aa.id === item.id)
-        if (existing) {
-          return prev.filter((aa) => aa.id !== item.id)
-        }
-        return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }]
-      })
-      return
-    }
-
-    const existing = aaItems.find((aa) => aa.id === item.id)
-    setAaQuantityTarget({
-      itemId: item.id,
-      name: item.name,
-      maxQuantity: item.quantity,
-      price: item.price,
-    })
-    setAaQuantityInput(existing ? existing.quantity : 1)
-    setAaQuantityDialogOpen(true)
+  const handleEditAaItemQuantity = (itemId: string) => {
+    if (!aaMode) return
+    const target = aggregatedItems.find((item) => item.id === itemId)
+    if (!target) return
+    const existing = aaItems.find((aa) => aa.id === itemId)
+    checkoutActions.openAaQuantityDialog(
+      {
+        itemId: target.id,
+        name: target.name,
+        maxQuantity: target.quantity,
+        price: target.price,
+      },
+      existing ? existing.quantity : 1,
+    )
   }
 
   return (
@@ -811,7 +510,7 @@ export function POSInterface() {
         onUpdateCartQuantity={updateQuantity}
         onRemoveFromCart={removeFromCart}
         subtotal={subtotal}
-        discount={discount}
+        discount={discountPercent}
         discountAmount={discountAmount}
         total={total}
         orderError={orderError}
@@ -829,14 +528,8 @@ export function POSInterface() {
       <PosCheckoutDialog
         open={checkoutDialog}
         onOpenChange={(open) => {
-          setCheckoutDialog(open)
           if (!open) {
-            setReceivedAmount(0)
-            setAaMode(false)
-            setAaItems([])
-            setAaQuantityDialogOpen(false)
-            setAaQuantityTarget(null)
-            setAaQuantityInput(1)
+            checkoutActions.closeCheckout()
           }
         }}
         tables={tables}
@@ -848,42 +541,23 @@ export function POSInterface() {
         aggregatedItems={aggregatedItems}
         aaMode={aaMode}
         aaItems={aaItems}
-        onClearAAItems={() => setAaItems([])}
+        onClearAAItems={checkoutActions.clearAaItems}
         onAggregatedItemClick={handleAggregatedItemClick}
+        onRemoveAAItem={checkoutActions.removeAaItem}
+        onEditAAItemQuantity={handleEditAaItemQuantity}
         aaQuantityDialogOpen={aaQuantityDialogOpen}
         aaQuantityTarget={aaQuantityTarget}
         aaQuantityInput={aaQuantityInput}
-        onAaQuantityInputChange={setAaQuantityInput}
-        onConfirmAaQuantity={() => {
-          if (!aaQuantityTarget) return
-          const quantity = Math.min(
-            aaQuantityTarget.maxQuantity,
-            Math.max(1, aaQuantityInput || 1),
-          )
-          setAaItems((prev) => {
-            const existing = prev.find((aa) => aa.id === aaQuantityTarget.itemId)
-            const rest = prev.filter((aa) => aa.id !== aaQuantityTarget.itemId)
-            if (existing) {
-              return [...rest, { ...existing, quantity }]
-            }
-            return [...rest, { id: aaQuantityTarget.itemId, name: aaQuantityTarget.name, price: aaQuantityTarget.price, quantity }]
-          })
-          setAaQuantityDialogOpen(false)
-          setAaQuantityTarget(null)
-          setAaQuantityInput(1)
-        }}
-        onCancelAaQuantity={() => {
-          setAaQuantityDialogOpen(false)
-          setAaQuantityTarget(null)
-          setAaQuantityInput(1)
-        }}
+        onAaQuantityInputChange={checkoutActions.setAaQuantityInput}
+        onConfirmAaQuantity={() => checkoutActions.confirmAaQuantity(aaQuantityInput)}
+        onCancelAaQuantity={checkoutActions.cancelAaQuantityDialog}
         paymentMethod={paymentMethod}
-        onPaymentMethodChange={setPaymentMethod}
+        onPaymentMethodChange={checkoutActions.setPaymentMethod}
         receivedAmount={receivedAmount}
-        onReceivedAmountChange={setReceivedAmount}
+        onReceivedAmountChange={checkoutActions.setReceivedAmount}
         changeAmount={changeAmount}
-        discount={discount}
-        onDiscountChange={setDiscount}
+        discount={discountPercent}
+        onDiscountChange={checkoutActions.setDiscount}
         checkoutSubtotal={checkoutSubtotal}
         checkoutDiscountAmount={checkoutDiscountAmount}
         checkoutTotal={checkoutTotal}
@@ -893,84 +567,6 @@ export function POSInterface() {
       />
 
       {/* removed: Hold Order Dialog */}
-
-      {/* AA 数量选择弹窗 */}
-      <Dialog open={aaQuantityDialogOpen} onOpenChange={setAaQuantityDialogOpen}>
-        <DialogContent className="max-w-xs">
-          <DialogHeader>
-            <DialogTitle>选择 AA 数量</DialogTitle>
-            <DialogDescription>
-              {aaQuantityTarget
-                ? `${aaQuantityTarget.name}（最多 x${aaQuantityTarget.maxQuantity}）`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Label htmlFor="aa-quantity-input">AA 数量</Label>
-            <Input
-              id="aa-quantity-input"
-              type="number"
-              min={1}
-              max={aaQuantityTarget?.maxQuantity ?? 1}
-              value={aaQuantityInput}
-              onChange={(e) => {
-                const raw = Number(e.target.value) || 0
-                if (!aaQuantityTarget) return
-                const clamped = Math.min(
-                  aaQuantityTarget.maxQuantity,
-                  Math.max(1, raw),
-                )
-                setAaQuantityInput(clamped)
-              }}
-            />
-            <p className="text-xs text-muted-foreground">
-              不能超过该菜品在订单中的总数量。
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setAaQuantityDialogOpen(false)}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={() => {
-                if (!aaQuantityTarget) return
-                const quantity = Math.min(
-                  aaQuantityTarget.maxQuantity,
-                  Math.max(1, aaQuantityInput),
-                )
-                setAaItems((prev) => {
-                  const existing = prev.find(
-                    (item) => item.id === aaQuantityTarget.itemId,
-                  )
-                  if (existing) {
-                    return prev.map((item) =>
-                      item.id === aaQuantityTarget.itemId
-                        ? { ...item, quantity }
-                        : item,
-                    )
-                  }
-                  return [
-                    ...prev,
-                    {
-                      id: aaQuantityTarget.itemId,
-                      name: aaQuantityTarget.name,
-                      price: aaQuantityTarget.price,
-                      quantity,
-                    },
-                  ]
-                })
-                setAaQuantityDialogOpen(false)
-              }}
-            >
-              确认
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Split Table Dialog */}
       <Dialog open={splitTableDialog} onOpenChange={setSplitTableDialog}>
         <DialogContent className="max-w-md">
