@@ -30,6 +30,5 @@ export function toMoneyString(value: number): string {
 }
 
 export function addMoney(values: unknown[]): number {
-  return values.reduce((sum, v) => sum + parseMoney(v), 0)
+  return values.reduce<number>((sum, v) => sum + parseMoney(v), 0)
 }
-

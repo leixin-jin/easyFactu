@@ -60,6 +60,16 @@ function calculateSubtotals(
   return { fullSubtotal, outstandingSubtotal };
 }
 
+function normalizeTransactionDate(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  const parsed = new Date(value as string);
+  return Number.isNaN(parsed.getTime())
+    ? String(value ?? "")
+    : parsed.toISOString().slice(0, 10);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const json = await req.json().catch(() => ({}));
@@ -470,10 +480,7 @@ export async function POST(req: NextRequest) {
               amount: parseNumeric(transactionRow.amount),
               paymentMethod: transactionRow.paymentMethod,
               orderId: transactionRow.orderId,
-              date:
-                transactionRow.date instanceof Date
-                  ? transactionRow.date.toISOString().slice(0, 10)
-                  : String(transactionRow.date),
+              date: normalizeTransactionDate(transactionRow.date),
               createdAt: transactionRow.createdAt.toISOString(),
             }
             : null,
@@ -636,10 +643,7 @@ export async function POST(req: NextRequest) {
             amount: parseNumeric(transactionRow.amount),
             paymentMethod: transactionRow.paymentMethod,
             orderId: transactionRow.orderId,
-            date:
-              transactionRow.date instanceof Date
-                ? transactionRow.date.toISOString().slice(0, 10)
-                : String(transactionRow.date),
+            date: normalizeTransactionDate(transactionRow.date),
             createdAt: transactionRow.createdAt.toISOString(),
           }
           : null,
