@@ -10,7 +10,8 @@ import {
   restaurantTables,
   transactions,
 } from "@/db/schema";
-import { parseMoney } from "@/lib/money";
+import { parseMoney, toMoneyString } from "@/lib/money";
+import { buildOrderBatches, type OrderItemRow } from "@/lib/order-utils";
 
 const checkoutModeSchema = z.enum(["full", "aa"]);
 
@@ -35,6 +36,28 @@ const checkoutBodySchema = z.object({
 
 function parseNumeric(value: unknown): number {
   return parseMoney(value);
+}
+
+function calculateSubtotals(
+  rows: Array<{
+    price: unknown;
+    quantity: number;
+    paidQuantity?: number | null;
+  }>,
+) {
+  let fullSubtotal = 0;
+  let outstandingSubtotal = 0;
+
+  for (const row of rows) {
+    const price = parseNumeric(row.price);
+    fullSubtotal += price * row.quantity;
+    const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
+    if (unpaidQty > 0) {
+      outstandingSubtotal += price * unpaidQty;
+    }
+  }
+
+  return { fullSubtotal, outstandingSubtotal };
 }
 
 export async function POST(req: NextRequest) {
@@ -335,17 +358,9 @@ export async function POST(req: NextRequest) {
           .where(eq(orderItems.orderId, order.id))
           .orderBy(asc(orderItems.batchNo), asc(orderItems.createdAt));
 
-        const fullSubtotal = remainingRows.reduce((sum, row) => {
-          const price = parseNumeric(row.price);
-          return sum + price * row.quantity;
-        }, 0);
-
-        const remainingSubtotal = remainingRows.reduce((sum, row) => {
-          const price = parseNumeric(row.price);
-          const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
-          if (unpaidQty <= 0) return sum;
-          return sum + price * unpaidQty;
-        }, 0);
+        const { fullSubtotal, outstandingSubtotal: remainingSubtotal } = calculateSubtotals(
+          remainingRows as OrderItemRow[],
+        );
 
         const existingTotalAmount = parseNumeric(
           (order as { totalAmount?: unknown }).totalAmount ?? 0,
@@ -365,11 +380,11 @@ export async function POST(req: NextRequest) {
             .update(orders)
             .set({
               status: "paid",
-              subtotal: fullSubtotal.toFixed(2),
+              subtotal: toMoneyString(fullSubtotal),
               discount: "0",
-              total: newPaidAmount.toFixed(2),
-              totalAmount: newTotalAmount.toFixed(2),
-              paidAmount: newPaidAmount.toFixed(2),
+              total: toMoneyString(newPaidAmount),
+              totalAmount: toMoneyString(newTotalAmount),
+              paidAmount: toMoneyString(newPaidAmount),
               paymentMethod,
               closedAt: new Date(),
             })
@@ -390,11 +405,11 @@ export async function POST(req: NextRequest) {
             .update(orders)
             .set({
               status: "open",
-              subtotal: fullSubtotal.toFixed(2),
+              subtotal: toMoneyString(fullSubtotal),
               discount: "0",
-              total: newPaidAmount.toFixed(2),
-              totalAmount: newTotalAmount.toFixed(2),
-              paidAmount: newPaidAmount.toFixed(2),
+              total: toMoneyString(newPaidAmount),
+              totalAmount: toMoneyString(newTotalAmount),
+              paidAmount: toMoneyString(newPaidAmount),
               paymentMethod,
               closedAt: null,
             })
@@ -405,7 +420,7 @@ export async function POST(req: NextRequest) {
             .update(restaurantTables)
             .set({
               status: "occupied",
-              amount: remainingSubtotal.toFixed(2),
+              amount: toMoneyString(remainingSubtotal),
             })
             .where(eq(restaurantTables.id, tableId));
         }
@@ -415,59 +430,16 @@ export async function POST(req: NextRequest) {
           .values({
             type: "income",
             category: "POS checkout - AA",
-            amount: aaCalculatedTotal.toFixed(2),
+            amount: toMoneyString(aaCalculatedTotal),
             description: `POS AA 结账 - 桌台 ${table.number}`,
             paymentMethod,
             orderId: order.id,
           })
           .returning();
 
-        const batchesMap = new Map<
-          number,
-          {
-            batchNo: number;
-            items: Array<{
-              id: string;
-              menuItemId: string;
-              name: string;
-              nameEn: string;
-              quantity: number;
-              price: number;
-              notes: string | null;
-              createdAt: string;
-            }>;
-          }
-        >();
-
-        for (const row of remainingRows) {
-          const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
-          if (unpaidQty <= 0) continue;
-          const batchNo = row.batchNo ?? 1;
-          if (!batchesMap.has(batchNo)) {
-            batchesMap.set(batchNo, {
-              batchNo,
-              items: [],
-            });
-          }
-          const batch = batchesMap.get(batchNo)!;
-          batch.items.push({
-            id: row.id,
-            menuItemId: row.menuItemId,
-            name: row.name ?? "",
-            nameEn: row.nameEn ?? "",
-            quantity: unpaidQty,
-            price:
-              typeof row.price === "string"
-                ? parseFloat(row.price)
-                : Number(row.price),
-            notes: row.notes ?? null,
-            createdAt: row.createdAt.toISOString(),
-          });
-        }
-
-        const batches = Array.from(batchesMap.values()).sort(
-          (a, b) => a.batchNo - b.batchNo,
-        );
+        const batches = buildOrderBatches(remainingRows as OrderItemRow[], {
+          omitFullyPaid: true,
+        });
 
         return {
           order: {
@@ -517,17 +489,9 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      const fullSubtotal = rows.reduce((sum, row) => {
-        const price = parseNumeric(row.price);
-        return sum + price * row.quantity;
-      }, 0);
-
-      const outstandingSubtotal = rows.reduce((sum, row) => {
-        const price = parseNumeric(row.price);
-        const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
-        if (unpaidQty <= 0) return sum;
-        return sum + price * unpaidQty;
-      }, 0);
+      const { fullSubtotal, outstandingSubtotal } = calculateSubtotals(
+        rows as OrderItemRow[],
+      );
 
       const discountRate = discountPercent > 0 ? discountPercent / 100 : 0;
       const discountAmount = outstandingSubtotal * discountRate;
@@ -594,8 +558,10 @@ export async function POST(req: NextRequest) {
       const newPaidAmount = existingPaidAmount + calculatedTotal;
 
       // 整单结算：将所有菜品标记为已付（paidQuantity = quantity）
+      const fullyPaidRows: OrderItemRow[] = [];
       for (const row of rows) {
         const qty = row.quantity;
+        fullyPaidRows.push({ ...row, paidQuantity: qty });
         await tx
           .update(orderItems)
           .set({ paidQuantity: qty })
@@ -606,11 +572,11 @@ export async function POST(req: NextRequest) {
         .update(orders)
         .set({
           status: "paid",
-          subtotal: fullSubtotal.toFixed(2),
-          discount: discountAmount.toFixed(2),
-          total: newPaidAmount.toFixed(2),
-          totalAmount: newTotalAmount.toFixed(2),
-          paidAmount: newPaidAmount.toFixed(2),
+          subtotal: toMoneyString(fullSubtotal),
+          discount: toMoneyString(discountAmount),
+          total: toMoneyString(newPaidAmount),
+          totalAmount: toMoneyString(newTotalAmount),
+          paidAmount: toMoneyString(newPaidAmount),
           paymentMethod,
           closedAt: new Date(),
         })
@@ -622,7 +588,7 @@ export async function POST(req: NextRequest) {
         .values({
           type: "income",
           category: "POS checkout",
-          amount: calculatedTotal.toFixed(2),
+          amount: toMoneyString(calculatedTotal),
           description: `POS 订单结账 - 桌台 ${table.number}`,
           paymentMethod,
           orderId: order.id,
@@ -639,52 +605,7 @@ export async function POST(req: NextRequest) {
         })
         .where(eq(restaurantTables.id, tableId));
 
-      const batchesMap = new Map<
-        number,
-        {
-          batchNo: number;
-          items: Array<{
-            id: string;
-            menuItemId: string;
-            name: string;
-            nameEn: string;
-            quantity: number;
-            price: number;
-            notes: string | null;
-            createdAt: string;
-          }>;
-        }
-      >();
-
-      for (const row of rows) {
-        const unpaidQty = row.quantity - (row.paidQuantity ?? 0);
-        if (unpaidQty <= 0) continue;
-        const batchNo = row.batchNo ?? 1;
-        if (!batchesMap.has(batchNo)) {
-          batchesMap.set(batchNo, {
-            batchNo,
-            items: [],
-          });
-        }
-        const batch = batchesMap.get(batchNo)!;
-        batch.items.push({
-          id: row.id,
-          menuItemId: row.menuItemId,
-          name: row.name ?? "",
-          nameEn: row.nameEn ?? "",
-          quantity: unpaidQty,
-          price:
-            typeof row.price === "string"
-              ? parseFloat(row.price)
-              : Number(row.price),
-          notes: row.notes ?? null,
-          createdAt: row.createdAt.toISOString(),
-        });
-      }
-
-      const batches = Array.from(batchesMap.values()).sort(
-        (a, b) => a.batchNo - b.batchNo,
-      );
+      const batches = buildOrderBatches(fullyPaidRows, { omitFullyPaid: true });
 
       return {
         order: {

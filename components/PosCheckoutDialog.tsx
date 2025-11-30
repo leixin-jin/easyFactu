@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Printer, Trash2 } from "lucide-react"
 
-import type { CartItem, OrderBatchView, AAItemSelection } from "@/components/pos-interface"
+import type { CartItem, OrderBatchView, AAItemSelection } from "@/types/pos"
 
 export interface PosCheckoutDialogProps {
   open: boolean
@@ -31,6 +31,8 @@ export interface PosCheckoutDialogProps {
   aaItems: AAItemSelection[]
   onClearAAItems: () => void
   onAggregatedItemClick: (item: { id: string; name: string; quantity: number; price: number }) => void
+  onRemoveAAItem: (id: string) => void
+  onEditAAItemQuantity: (id: string) => void
   aaQuantityDialogOpen: boolean
   aaQuantityTarget:
     | {
@@ -73,6 +75,8 @@ export function PosCheckoutDialog({
   aaItems,
   onClearAAItems,
   onAggregatedItemClick,
+  onRemoveAAItem,
+  onEditAAItemQuantity,
   aaQuantityDialogOpen,
   aaQuantityTarget,
   aaQuantityInput,
@@ -278,12 +282,7 @@ export function PosCheckoutDialog({
                           <button
                             type="button"
                             className="underline-offset-2 hover:underline"
-                            onClick={() => {
-                              if (!aaQuantityTarget || aaQuantityTarget.itemId !== item.id) {
-                                // 交由上层重新设置数量弹窗的目标和输入值
-                                onAaQuantityInputChange(item.quantity)
-                              }
-                            }}
+                            onClick={() => onEditAAItemQuantity(item.id)}
                           >
                             修改数量
                           </button>
@@ -294,9 +293,7 @@ export function PosCheckoutDialog({
                         variant="ghost"
                         size="icon"
                         className="ml-2 h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() =>
-                          onClearAAItems() // 上层会重建列表
-                        }
+                        onClick={() => onRemoveAAItem(item.id)}
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>

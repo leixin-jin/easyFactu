@@ -10,8 +10,9 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { RestaurantTableView as TableOption } from "@/hooks/useRestaurantTables"
+import Image from "next/image"
 
-import type { MenuItem } from "@/components/pos-interface"
+import type { MenuItem } from "@/types/pos"
 
 export interface PosMenuPaneProps {
   selectedTable: string
@@ -97,11 +98,22 @@ export function PosMenuPane({
                   onClick={() => onAddToCart(item)}
                 >
                   <div className="aspect-square relative overflow-hidden bg-muted">
-                    <img
-                      src={item.image || "/placeholder.svg"}
+                    {(() => {
+                      const rawSrc = (item.image ?? "").trim()
+                      const isValidAbsolute = rawSrc.startsWith("http://") || rawSrc.startsWith("https://")
+                      const isValidRelative = rawSrc.startsWith("/")
+                      const imageSrc = rawSrc && (isValidAbsolute || isValidRelative) ? rawSrc : "/placeholder.svg"
+                      return (
+                    <Image
+                      src={imageSrc}
                       alt={item.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform"
+                      sizes="(min-width: 1024px) 200px, (min-width: 768px) 180px, 50vw"
+                      priority={false}
                     />
+                      )
+                    })()}
                     {item.popular && (
                       <Badge className="absolute top-2 right-2 bg-destructive text-destructive-foreground">
                         热销
@@ -139,4 +151,3 @@ export function PosMenuPane({
     </div>
   )
 }
-

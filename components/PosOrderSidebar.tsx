@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { RestaurantTableView as TableOption } from "@/hooks/useRestaurantTables"
 
-import type { OrderBatchView, CartItem } from "@/components/pos-interface"
+import type { OrderBatchView, CartItem } from "@/types/pos"
 
 export interface PosOrderSidebarProps {
   tables: TableOption[]

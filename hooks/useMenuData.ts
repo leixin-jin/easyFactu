@@ -57,9 +57,9 @@ export function useMenuData(options: UseMenuDataOptions = {}) {
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "加载失败")
         // 降级回退
-        if (fallback?.items?.length) {
-          setItems(fallback.items)
-          if (fallback.categories) setCategories(fallback.categories)
+        if (fallbackItems?.length) {
+          setItems(fallbackItems)
+          if (fallbackCategories) setCategories(fallbackCategories)
         }
       } finally {
         setLoading(false)

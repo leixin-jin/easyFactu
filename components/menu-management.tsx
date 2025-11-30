@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useState } from "react"
 import { useMenuData } from "@/hooks/useMenuData"
 import { Card } from "@/components/ui/card"
@@ -96,7 +97,7 @@ export function MenuManagement() {
     // 保证选中分类有效
     const valid = new Set(cats.map((c) => c.id))
     if (!valid.has(selectedCategory)) setSelectedCategory("all")
-  }, [items])
+  }, [items, selectedCategory])
 
   const filteredItems = items.filter((item) => {
     const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
@@ -251,11 +252,22 @@ export function MenuManagement() {
                     <div className="flex gap-4">
                       {/* Image */}
                       <div className="w-24 h-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                        <img
-                          src={item.image || "/placeholder.svg"}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
+                        {(() => {
+                          const rawSrc = (item.image ?? "").trim()
+                          const isValidAbsolute = rawSrc.startsWith("http://") || rawSrc.startsWith("https://")
+                          const isValidRelative = rawSrc.startsWith("/")
+                          const imageSrc = rawSrc && (isValidAbsolute || isValidRelative) ? rawSrc : "/placeholder.svg"
+                          return (
+                            <Image
+                              src={imageSrc}
+                              alt={item.name}
+                              width={96}
+                              height={96}
+                              className="w-full h-full object-cover"
+                              sizes="96px"
+                            />
+                          )
+                        })()}
                       </div>
 
                       {/* Content */}
