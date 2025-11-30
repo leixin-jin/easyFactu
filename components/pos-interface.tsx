@@ -3,15 +3,6 @@
 import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useMenuData } from "@/hooks/useMenuData"
@@ -25,12 +16,14 @@ import { usePosOrder } from "@/hooks/usePosOrder"
 import { PosMenuPane } from "@/components/PosMenuPane"
 import { PosOrderSidebar } from "@/components/PosOrderSidebar"
 import { PosCheckoutDialog } from "@/components/PosCheckoutDialog"
+import { SplitTableDialog, MergeTableDialog } from "@/components/TableTransferDialogs"
 import type {
   CartItem,
   CheckoutReceiptData,
   MenuItem,
   ReceiptItem,
 } from "@/types/pos"
+import { useTableTransfer } from "@/hooks/useTableTransfer"
 
 // 分类改为从 /api/menu-items 获取（通过 useMenuData），已移除菜单 mock
 
@@ -104,6 +97,13 @@ export function POSInterface() {
     removePersistedItem,
     applyOrderState,
   } = usePosOrder(selectedTable)
+
+  const { split, merge, splitLoading, mergeLoading } = useTableTransfer({
+    selectedTableId: selectedTable,
+    applyOrderState,
+    reloadTables,
+    setOrderError,
+  })
 
   const {
     state: checkoutState,
@@ -478,6 +478,46 @@ export function POSInterface() {
     )
   }
 
+  const handleOpenSplitDialog = () => {
+    if (!selectedTable) {
+      toast({
+        title: "未选择桌台",
+        description: "请先在右侧选择一个桌台，再拆台。",
+        variant: "destructive",
+      })
+      return
+    }
+    if (loadingOrder) {
+      toast({
+        title: "正在加载订单",
+        description: "请稍候，订单加载完成后再拆台。",
+        variant: "destructive",
+      })
+      return
+    }
+    if (batches.length === 0) {
+      toast({
+        title: "当前订单为空",
+        description: "没有可拆分的已下单菜品。",
+        variant: "destructive",
+      })
+      return
+    }
+    setSplitTableDialog(true)
+  }
+
+  const handleOpenMergeDialog = () => {
+    if (!selectedTable) {
+      toast({
+        title: "未选择桌台",
+        description: "请先在右侧选择一个桌台，再并台。",
+        variant: "destructive",
+      })
+      return
+    }
+    setMergeTableDialog(true)
+  }
+
   return (
     <>
       <div className="h-[calc(100vh-8rem)] flex gap-4 print:hidden">
@@ -521,8 +561,8 @@ export function POSInterface() {
         submittingBatch={submittingBatch}
         clearingOrder={clearingOrder}
         maxExistingBatchNo={maxExistingBatchNo}
-        onOpenSplit={() => setSplitTableDialog(true)}
-        onOpenMerge={() => setMergeTableDialog(true)}
+        onOpenSplit={handleOpenSplitDialog}
+        onOpenMerge={handleOpenMergeDialog}
       />
 
       <PosCheckoutDialog
@@ -566,72 +606,55 @@ export function POSInterface() {
         onCheckout={handleCheckout}
       />
 
-      {/* removed: Hold Order Dialog */}
-      {/* Split Table Dialog */}
-      <Dialog open={splitTableDialog} onOpenChange={setSplitTableDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>拆台</DialogTitle>
-            <DialogDescription>选择要拆分的菜品到新桌台</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">选择目标桌台将菜品分配至新桌</p>
-            <Select>
-              <SelectTrigger>
-                <SelectValue placeholder="选择目标桌台" />
-              </SelectTrigger>
-              <SelectContent>
-                {tables
-                  .filter((t) => t.id !== selectedTable)
-                  .map((table) => (
-                    <SelectItem key={table.id} value={table.id}>
-                      {table.number}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSplitTableDialog(false)}>
-              取消
-            </Button>
-            <Button onClick={() => setSplitTableDialog(false)}>确认拆台</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SplitTableDialog
+        open={splitTableDialog}
+        onOpenChange={setSplitTableDialog}
+        sourceTableId={selectedTable}
+        tables={tables}
+        batches={batches}
+        loading={loadingOrder}
+        submitting={splitLoading}
+        onConfirm={async ({ targetTableId, items, moveAll }) => {
+          if (!selectedTable) {
+            toast({
+              title: "未选择桌台",
+              description: "请先选择桌台后再拆台。",
+              variant: "destructive",
+            })
+            return
+          }
+          await split({
+            sourceTableId: selectedTable,
+            targetTableId,
+            items,
+            moveAll,
+          })
+        }}
+      />
 
-      {/* Merge Table Dialog */}
-      <Dialog open={mergeTableDialog} onOpenChange={setMergeTableDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>并台</DialogTitle>
-            <DialogDescription>选择主桌与目标桌预览账单合并</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">选择要并入的桌台，账单将合并</p>
-            <Select>
-              <SelectTrigger>
-                <SelectValue placeholder="选择目标桌台" />
-              </SelectTrigger>
-              <SelectContent>
-                {tables
-                  .filter((t) => t.id !== selectedTable)
-                  .map((table) => (
-                    <SelectItem key={table.id} value={table.id}>
-                      {table.number}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMergeTableDialog(false)}>
-              取消
-            </Button>
-            <Button onClick={() => setMergeTableDialog(false)}>确认并台</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MergeTableDialog
+        open={mergeTableDialog}
+        onOpenChange={setMergeTableDialog}
+        targetTableId={selectedTable}
+        tables={tables}
+        submitting={mergeLoading}
+        onConfirm={async ({ sourceTableId, items, moveAll }) => {
+          if (!selectedTable) {
+            toast({
+              title: "未选择桌台",
+              description: "请先选择桌台后再并台。",
+              variant: "destructive",
+            })
+            return
+          }
+          await merge({
+            sourceTableId,
+            targetTableId: selectedTable,
+            items,
+            moveAll,
+          })
+        }}
+      />
     </div>
 
     {printData && (
