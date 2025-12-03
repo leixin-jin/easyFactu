@@ -11,25 +11,25 @@ import {
   Grid3x3,
   List,
   DollarSign,
-  MoreVertical,
-  Edit,
-  Trash2,
-  Receipt,
-  UserPlus,
+  Plus,
+  Minus,
 } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { useRouter } from "next/navigation"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import {
   type RestaurantTableView as Table,
   type TableStatus,
   useRestaurantTables,
 } from "@/hooks/useRestaurantTables"
+import { useToast } from "@/hooks/use-toast"
 
 // NOTE: mock data kept for fallback only. Primary source is API.
 const mockTables: Table[] = [
@@ -156,10 +156,17 @@ const statusConfig = {
 
 export function TableManagement() {
   const router = useRouter()
+  const { toast } = useToast()
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState<TableStatus | "all">("all")
   const [filterArea, setFilterArea] = useState<string>("all")
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [newTable, setNewTable] = useState({ number: "", area: "", capacity: "4" })
+  const [deleteTargetId, setDeleteTargetId] = useState("")
   // reservation and locking features removed
 
   const {
@@ -184,9 +191,120 @@ export function TableManagement() {
     router.push(`/pos?tableNumber=${encodeURIComponent(table.number)}`)
   }
 
-  const handleTableAction = (table: Table, action: string) => {
-    console.log(`[v0] Action ${action} on table ${table.number}`)
-    // Handle table actions
+  const handleCreateTable = async () => {
+    const number = newTable.number.trim()
+    const area = newTable.area.trim()
+    const capacityValue = Number.parseInt(newTable.capacity, 10)
+
+    if (!number) {
+      toast({
+        title: "桌号不能为空",
+        description: "请输入桌号后再创建桌台。",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!Number.isFinite(capacityValue) || capacityValue <= 0) {
+      toast({
+        title: "容纳人数需大于 0",
+        description: "请输入有效的容纳人数。",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setCreating(true)
+      const res = await fetch("/api/restaurant-tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          number,
+          area: area || null,
+          capacity: capacityValue,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        const message =
+          data?.code === "TABLE_NUMBER_EXISTS"
+            ? "桌号已存在，请使用其他桌号。"
+            : data?.error || "创建桌台失败"
+        toast({
+          title: "创建失败",
+          description: message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "桌台已创建",
+        description: `桌号 ${number} 已添加，状态默认为空闲。`,
+      })
+      setCreateDialogOpen(false)
+      setNewTable({ number: "", area: "", capacity: "4" })
+      await reload()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "未知错误"
+      toast({
+        title: "创建失败",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleDeleteTable = async () => {
+    if (!deleteTargetId) {
+      toast({
+        title: "请选择要删除的桌台",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setDeleting(true)
+      const res = await fetch(`/api/restaurant-tables/${deleteTargetId}`, {
+        method: "DELETE",
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        const message =
+          data?.code === "TABLE_HAS_OPEN_ORDER"
+            ? "该桌台有进行中的订单，无法删除。"
+            : data?.error || "删除桌台失败"
+        toast({
+          title: "删除失败",
+          description: message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "桌台已删除",
+        description: "该桌台已从列表移除。",
+      })
+      setDeleteDialogOpen(false)
+      setDeleteTargetId("")
+      await reload()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "未知错误"
+      toast({
+        title: "删除失败",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -197,9 +315,29 @@ export function TableManagement() {
           <h1 className="text-3xl font-bold text-foreground text-balance">桌台管理</h1>
           <p className="text-muted-foreground mt-1">实时查看和管理餐厅桌台状态</p>
         </div>
+        <div className="flex w-full sm:w-auto justify-end gap-2">
+          <Button onClick={() => {
+            setNewTable({ number: "", area: "", capacity: "4" })
+            setCreateDialogOpen(true)
+          }}>
+            <Plus className="w-4 h-4 mr-2" />
+            增加桌台
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              if (sortedTables.length > 0) {
+                setDeleteTargetId(sortedTables[0].id)
+              }
+              setDeleteDialogOpen(true)
+            }}
+            disabled={sortedTables.length === 0}
+          >
+            <Minus className="w-4 h-4 mr-2" />
+            删除桌台
+          </Button>
+        </div>
       </div>
-
-
       {/* Error & Loading */}
       {error && (
         <Card className="p-4 border-red-200 bg-red-50 text-sm text-red-700">
@@ -304,46 +442,6 @@ export function TableManagement() {
                             <Badge variant="secondary" className={`${config.bgColor} ${config.textColor} border-0`}>
                               {config.label}
                             </Badge>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {table.status === "idle" && (
-                                  <DropdownMenuItem onClick={() => goToPOS(table)}>
-                                    <UserPlus className="w-4 h-4 mr-2" />
-                                    开台
-                                  </DropdownMenuItem>
-                                )}
-                                {table.status === "occupied" && (
-                                  <>
-                                    <DropdownMenuItem onClick={() => handleTableAction(table, "checkout")}>
-                                      <Receipt className="w-4 h-4 mr-2" />
-                                      结账
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleTableAction(table, "transfer")}>
-                                      <Edit className="w-4 h-4 mr-2" />
-                                      转台
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                                {/* Locked state removed */}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => handleTableAction(table, "edit")}>
-                                  <Edit className="w-4 h-4 mr-2" />
-                                  编辑
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => handleTableAction(table, "delete")}
-                                  className="text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  删除
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
                           </div>
                         </div>
 
@@ -403,48 +501,7 @@ export function TableManagement() {
                       <td className="p-4 text-sm font-medium text-foreground">
                         {table.amount ? `€${table.amount.toFixed(2)}` : "-"}
                       </td>
-                      <td className="p-4 text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {table.status === "idle" && (
-                              <DropdownMenuItem onClick={() => goToPOS(table)}>
-                                <UserPlus className="w-4 h-4 mr-2" />
-                                开台
-                              </DropdownMenuItem>
-                            )}
-                            {table.status === "occupied" && (
-                              <>
-                                <DropdownMenuItem onClick={() => handleTableAction(table, "checkout")}>
-                                  <Receipt className="w-4 h-4 mr-2" />
-                                  结账
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleTableAction(table, "transfer")}>
-                                  <Edit className="w-4 h-4 mr-2" />
-                                  转台
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                            {/* Locked state removed */}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleTableAction(table, "edit")}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              编辑
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleTableAction(table, "delete")}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              删除
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
+                      <td className="p-4 text-right text-sm text-muted-foreground">-</td>
                     </tr>
                   )
                 })}
@@ -454,7 +511,145 @@ export function TableManagement() {
         </Card>
       )}
 
-      {/* Dialog removed in this iteration; POS 跳转仍可用 */}
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open)
+          if (!open) {
+            setNewTable({ number: "", area: "", capacity: "4" })
+            setCreating(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>增加桌台</DialogTitle>
+            <DialogDescription>新增桌台默认为空闲状态，可随时进入 POS 开台。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="table-number">桌号</Label>
+              <Input
+                id="table-number"
+                placeholder="例如 A-01"
+                value={newTable.number}
+                onChange={(e) => setNewTable((prev) => ({ ...prev, number: e.target.value }))}
+                disabled={creating}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="table-area">区域（可选）</Label>
+              <Select
+                value={newTable.area}
+                onValueChange={(value) => setNewTable((prev) => ({ ...prev, area: value }))}
+                disabled={creating}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择已有区域" />
+                </SelectTrigger>
+                <SelectContent>
+                  {areas
+                    .filter((area) => area && area !== "all")
+                    .map((area) => (
+                      <SelectItem key={area} value={area}>
+                        {area}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <Input
+                id="table-area"
+                placeholder="例如 大厅A区"
+                value={newTable.area}
+                onChange={(e) => setNewTable((prev) => ({ ...prev, area: e.target.value }))}
+                disabled={creating}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="table-capacity">容纳人数</Label>
+              <Input
+                id="table-capacity"
+                type="number"
+                min={1}
+                value={newTable.capacity}
+                onChange={(e) => setNewTable((prev) => ({ ...prev, capacity: e.target.value }))}
+                disabled={creating}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setCreateDialogOpen(false)
+                setNewTable({ number: "", area: "", capacity: "4" })
+              }}
+              disabled={creating}
+            >
+              取消
+            </Button>
+            <Button type="button" onClick={handleCreateTable} disabled={creating}>
+              {creating ? "创建中..." : "确认创建"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) {
+            setDeleteTargetId("")
+            setDeleting(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>删除桌台</DialogTitle>
+            <DialogDescription>请选择需要删除的桌台，确认后将从列表移除。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label>桌台</Label>
+              <Select value={deleteTargetId} onValueChange={setDeleteTargetId} disabled={deleting}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择桌台" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedTables.map((table) => (
+                    <SelectItem key={table.id} value={table.id}>
+                      {table.number}
+                      {table.area ? ` · ${table.area}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              提示：如桌台存在进行中的订单，需要先结账后再删除。
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false)
+                setDeleteTargetId("")
+              }}
+              disabled={deleting}
+            >
+              取消
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleDeleteTable} disabled={deleting}>
+              {deleting ? "删除中..." : "确认删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
