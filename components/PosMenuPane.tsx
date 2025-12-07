@@ -6,7 +6,6 @@ import { ArrowLeft, Plus, Search } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { RestaurantTableView as TableOption } from "@/hooks/useRestaurantTables"
@@ -104,26 +103,16 @@ export function PosMenuPane({
                       const isValidRelative = rawSrc.startsWith("/")
                       const imageSrc = rawSrc && (isValidAbsolute || isValidRelative) ? rawSrc : "/placeholder.svg"
                       return (
-                    <Image
-                      src={imageSrc}
-                      alt={item.name}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform"
-                      sizes="(min-width: 1024px) 200px, (min-width: 768px) 180px, 50vw"
-                      priority={false}
-                    />
+                        <Image
+                          src={imageSrc}
+                          alt={item.name}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform"
+                          sizes="(min-width: 1024px) 200px, (min-width: 768px) 180px, 50vw"
+                          priority={false}
+                        />
                       )
                     })()}
-                    {item.popular && (
-                      <Badge className="absolute top-2 right-2 bg-destructive text-destructive-foreground">
-                        热销
-                      </Badge>
-                    )}
-                    {item.spicy && (
-                      <Badge className="absolute top-2 left-2 bg-destructive/80 text-destructive-foreground">
-                        {"🌶️".repeat(item.spicy)}
-                      </Badge>
-                    )}
                   </div>
                   <div className="p-3 space-y-1">
                     <h3 className="font-medium text-foreground text-sm leading-tight">{item.name}</h3>

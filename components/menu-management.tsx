@@ -18,13 +18,11 @@ import {
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
-import { Plus, Search, Edit, Trash2, MoreVertical, ImageIcon, Eye, EyeOff } from "lucide-react"
+import { Plus, Search, Edit, Trash2, MoreVertical, ImageIcon } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -38,9 +36,6 @@ interface MenuItem {
   cost?: number
   description?: string
   image: string
-  available: boolean
-  popular?: boolean
-  spicy?: number
   allergens?: string[]
   sales?: number
   revenue?: number
@@ -75,9 +70,6 @@ export function MenuManagement() {
             category: String(i.category ?? "uncategorized"),
             price: typeof i.price === "number" ? i.price : Number(i.price ?? 0),
             image: String(i.image ?? ""),
-            available: Boolean(i.available ?? true),
-            popular: Boolean(i.popular ?? false),
-            spicy: Number(i.spicy ?? 0),
           }))
         : [],
     )
@@ -123,7 +115,6 @@ export function MenuManagement() {
       cost: 0,
       description: "",
       image: "/placeholder.svg",
-      available: true,
     })
     setIsNewItem(true)
     setEditDialog(true)
@@ -144,15 +135,8 @@ export function MenuManagement() {
     setItems(items.filter((item) => item.id !== id))
   }
 
-  const toggleAvailability = (id: string) => {
-    setItems(items.map((item) => (item.id === id ? { ...item, available: !item.available } : item)))
-  }
-
   const stats = {
     total: items.length,
-    available: items.filter((i) => i.available).length,
-    unavailable: items.filter((i) => !i.available).length,
-    popular: items.filter((i) => i.popular).length,
   }
 
   return (
@@ -170,29 +154,11 @@ export function MenuManagement() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <Card className="p-4 bg-card border-border">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">总菜品</p>
             <p className="text-2xl font-bold text-foreground">{stats.total}</p>
-          </div>
-        </Card>
-        <Card className="p-4 bg-card border-border">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">在售</p>
-            <p className="text-2xl font-bold text-primary">{stats.available}</p>
-          </div>
-        </Card>
-        <Card className="p-4 bg-card border-border">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">下架</p>
-            <p className="text-2xl font-bold text-muted-foreground">{stats.unavailable}</p>
-          </div>
-        </Card>
-        <Card className="p-4 bg-card border-border">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">热销</p>
-            <p className="text-2xl font-bold text-destructive">{stats.popular}</p>
           </div>
         </Card>
       </div>
@@ -245,9 +211,7 @@ export function MenuManagement() {
                 {filteredItems.map((item) => (
                   <Card
                     key={item.id}
-                    className={`p-4 bg-muted/30 border-border hover:border-primary/50 transition-colors ${
-                      !item.available ? "opacity-60" : ""
-                    }`}
+                    className="p-4 bg-muted/30 border-border hover:border-primary/50 transition-colors"
                   >
                     <div className="flex gap-4">
                       {/* Image */}
@@ -276,17 +240,6 @@ export function MenuManagement() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <h3 className="font-semibold text-foreground">{item.name}</h3>
-                              {item.popular && (
-                                <Badge className="bg-destructive text-destructive-foreground text-xs">热销</Badge>
-                              )}
-                              {!item.available && (
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-muted-foreground/20 text-muted-foreground text-xs"
-                                >
-                                  已下架
-                                </Badge>
-                              )}
                             </div>
                             <p className="text-sm text-muted-foreground mb-1">{item.nameEn}</p>
                             {item.description && (
@@ -305,20 +258,6 @@ export function MenuManagement() {
                                 <Edit className="w-4 h-4 mr-2" />
                                 编辑
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toggleAvailability(item.id)}>
-                                {item.available ? (
-                                  <>
-                                    <EyeOff className="w-4 h-4 mr-2" />
-                                    下架
-                                  </>
-                                ) : (
-                                  <>
-                                    <Eye className="w-4 h-4 mr-2" />
-                                    上架
-                                  </>
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleDelete(item.id)} className="text-destructive">
                                 <Trash2 className="w-4 h-4 mr-2" />
                                 删除
@@ -419,43 +358,24 @@ export function MenuManagement() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="category">分类 *</Label>
-                  <Select
-                    value={selectedItem.category}
-                    onValueChange={(value) => setSelectedItem({ ...selectedItem, category: value })}
-                  >
-                    <SelectTrigger id="category">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="appetizers">开胃菜</SelectItem>
-                      <SelectItem value="main">主菜</SelectItem>
-                      <SelectItem value="pasta">意面</SelectItem>
-                      <SelectItem value="pizza">披萨</SelectItem>
-                      <SelectItem value="desserts">甜品</SelectItem>
-                      <SelectItem value="drinks">饮品</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="spicy">辣度</Label>
-                  <Select
-                    value={selectedItem.spicy?.toString() || "0"}
-                    onValueChange={(value) => setSelectedItem({ ...selectedItem, spicy: Number.parseInt(value) })}
-                  >
-                    <SelectTrigger id="spicy">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">不辣</SelectItem>
-                      <SelectItem value="1">微辣 🌶️</SelectItem>
-                      <SelectItem value="2">中辣 🌶️🌶️</SelectItem>
-                      <SelectItem value="3">特辣 🌶️🌶️🌶️</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="category">分类 *</Label>
+                <Select
+                  value={selectedItem.category}
+                  onValueChange={(value) => setSelectedItem({ ...selectedItem, category: value })}
+                >
+                  <SelectTrigger id="category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="appetizers">开胃菜</SelectItem>
+                    <SelectItem value="main">主菜</SelectItem>
+                    <SelectItem value="pasta">意面</SelectItem>
+                    <SelectItem value="pizza">披萨</SelectItem>
+                    <SelectItem value="desserts">甜品</SelectItem>
+                    <SelectItem value="drinks">饮品</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -494,30 +414,6 @@ export function MenuManagement() {
                     <ImageIcon className="w-4 h-4" />
                   </Button>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                <div className="space-y-0.5">
-                  <Label htmlFor="available">上架状态</Label>
-                  <p className="text-xs text-muted-foreground">是否在菜单中显示此菜品</p>
-                </div>
-                <Switch
-                  id="available"
-                  checked={selectedItem.available}
-                  onCheckedChange={(checked) => setSelectedItem({ ...selectedItem, available: checked })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                <div className="space-y-0.5">
-                  <Label htmlFor="popular">热销标记</Label>
-                  <p className="text-xs text-muted-foreground">标记为热销菜品</p>
-                </div>
-                <Switch
-                  id="popular"
-                  checked={selectedItem.popular || false}
-                  onCheckedChange={(checked) => setSelectedItem({ ...selectedItem, popular: checked })}
-                />
               </div>
             </div>
           )}
