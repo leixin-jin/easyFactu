@@ -1,8 +1,11 @@
 "use client"
 
 import Image from "next/image"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { Loader2, Minus, Plus, Search } from "lucide-react"
+
 import { useMenuData } from "@/hooks/useMenuData"
+import { useToast } from "@/hooks/use-toast"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,32 +22,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { Plus, Search, Edit, Trash2, MoreVertical, ImageIcon, Eye, EyeOff } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
-
-interface MenuItem {
-  id: string
-  name: string
-  nameEn: string
-  category: string
-  price: number
-  cost?: number
-  description?: string
-  image: string
-  available: boolean
-  popular?: boolean
-  spicy?: number
-  allergens?: string[]
-  sales?: number
-  revenue?: number
-}
 
 interface Category {
   id: string
@@ -52,108 +30,288 @@ interface Category {
   count?: number
 }
 
-const DEFAULT_CATEGORIES: Category[] = [{ id: "all", name: "全部菜品", count: 0 }]
+interface AddMenuForm {
+  name: string
+  nameEn: string
+  category: string
+  price: string
+  cost: string
+  description: string
+  image: string
+  available: boolean
+  popular: boolean
+  spicy: number
+  allergens: string
+}
+
+type AddMenuFormErrors = Partial<Record<keyof AddMenuForm, string>>
+
+const DECIMAL_PATTERN = /^\d+(\.\d{1,2})?$/
+
+const createEmptyForm = (category?: string): AddMenuForm => ({
+  name: "",
+  nameEn: "",
+  category: category && category !== "all" ? category : "",
+  price: "",
+  cost: "",
+  description: "",
+  image: "",
+  available: true,
+  popular: false,
+  spicy: 0,
+  allergens: "",
+})
+
+const validateAddForm = (form: AddMenuForm): AddMenuFormErrors => {
+  const errors: AddMenuFormErrors = {}
+
+  if (!form.name.trim()) {
+    errors.name = "请输入菜品名称"
+  }
+
+  if (!form.category.trim()) {
+    errors.category = "请输入分类"
+  }
+
+  const priceValue = form.price.trim()
+  if (!priceValue) {
+    errors.price = "请输入售价"
+  } else if (!DECIMAL_PATTERN.test(priceValue)) {
+    errors.price = "售价需为最多两位小数的正数"
+  } else if (Number.parseFloat(priceValue) <= 0) {
+    errors.price = "售价必须大于 0"
+  }
+
+  const costValue = form.cost.trim()
+  if (costValue) {
+    if (!DECIMAL_PATTERN.test(costValue)) {
+      errors.cost = "成本需为最多两位小数的正数"
+    } else if (Number.parseFloat(costValue) < 0) {
+      errors.cost = "成本不得小于 0"
+    }
+  }
+
+  if (!Number.isInteger(form.spicy) || form.spicy < 0 || form.spicy > 5) {
+    errors.spicy = "辣度范围为 0-5"
+  }
+
+  return errors
+}
 
 export function MenuManagement() {
+  const { toast } = useToast()
+  const { items: fetchedItems, loading: menuLoading, error: menuError, refresh } = useMenuData()
+
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
-  const { items: fetchedItems } = useMenuData()
-  const [items, setItems] = useState<MenuItem[]>([])
-  const [dynamicCategories, setDynamicCategories] = useState<Category[]>(DEFAULT_CATEGORIES)
-  const [editDialog, setEditDialog] = useState(false)
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null)
-  const [isNewItem, setIsNewItem] = useState(false)
 
-  // 同步 Hook 数据到本地可编辑状态
-  useEffect(() => {
-    setItems(
-      Array.isArray(fetchedItems)
-        ? fetchedItems.map((i) => ({
-            id: String(i.id),
-            name: String(i.name ?? ""),
-            nameEn: String(i.nameEn ?? ""),
-            category: String(i.category ?? "uncategorized"),
-            price: typeof i.price === "number" ? i.price : Number(i.price ?? 0),
-            image: String(i.image ?? ""),
-            available: Boolean(i.available ?? true),
-            popular: Boolean(i.popular ?? false),
-            spicy: Number(i.spicy ?? 0),
-          }))
-        : [],
-    )
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+
+  const [addForm, setAddForm] = useState<AddMenuForm>(createEmptyForm())
+  const [addErrors, setAddErrors] = useState<AddMenuFormErrors>({})
+  const [addServerError, setAddServerError] = useState<string | null>(null)
+  const [addSubmitting, setAddSubmitting] = useState(false)
+
+  const [deleteSelection, setDeleteSelection] = useState("")
+  const [deleteServerError, setDeleteServerError] = useState<string | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+
+  const categories = useMemo<Category[]>(() => {
+    const counts = new Map<string, number>()
+    fetchedItems.forEach((item) => counts.set(item.category, (counts.get(item.category) ?? 0) + 1))
+    return [
+      { id: "all", name: "全部菜品", count: fetchedItems.length },
+      ...Array.from(counts.entries()).map(([id, count]) => ({ id, name: id, count })),
+    ]
   }, [fetchedItems])
 
-  // 基于当前 items 计算分类与计数
   useEffect(() => {
-    const counts = new Map<string, number>()
-    for (const it of items) counts.set(it.category, (counts.get(it.category) ?? 0) + 1)
-    const ids = Array.from(counts.keys())
-    const cats: Category[] = [
-      { id: "all", name: "全部菜品", count: items.length },
-      ...ids.map((id) => ({ id, name: id, count: counts.get(id) ?? 0 })),
-    ]
-    setDynamicCategories(cats)
-
-    // 保证选中分类有效
-    const valid = new Set(cats.map((c) => c.id))
-    if (!valid.has(selectedCategory)) setSelectedCategory("all")
-  }, [items, selectedCategory])
-
-  const filteredItems = items.filter((item) => {
-    const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.nameEn.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesCategory && matchesSearch
-  })
-
-  const handleEdit = (item: MenuItem) => {
-    setSelectedItem(item)
-    setIsNewItem(false)
-    setEditDialog(true)
-  }
-
-  const handleNew = () => {
-    setSelectedItem({
-      id: Date.now().toString(),
-      name: "",
-      nameEn: "",
-      category: "main",
-      price: 0,
-      cost: 0,
-      description: "",
-      image: "/placeholder.svg",
-      available: true,
-    })
-    setIsNewItem(true)
-    setEditDialog(true)
-  }
-
-  const handleSave = () => {
-    if (selectedItem) {
-      if (isNewItem) {
-        setItems([...items, selectedItem])
-      } else {
-        setItems(items.map((item) => (item.id === selectedItem.id ? selectedItem : item)))
-      }
+    const validIds = new Set(categories.map((c) => c.id))
+    if (!validIds.has(selectedCategory)) {
+      setSelectedCategory("all")
     }
-    setEditDialog(false)
+  }, [categories, selectedCategory])
+
+  const filteredItems = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return fetchedItems.filter((item) => {
+      const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
+      const matchesSearch =
+        !query ||
+        item.name.toLowerCase().includes(query) ||
+        (item.nameEn ?? "").toLowerCase().includes(query)
+      return matchesCategory && matchesSearch
+    })
+  }, [fetchedItems, selectedCategory, searchQuery])
+
+  const deletableItems = useMemo(
+    () =>
+      [...fetchedItems].sort((a, b) => {
+        if (a.category === b.category) return a.name.localeCompare(b.name, "zh-CN")
+        return a.category.localeCompare(b.category, "zh-CN")
+      }),
+    [fetchedItems],
+  )
+
+  const stats = useMemo(
+    () => ({
+      total: fetchedItems.length,
+    }),
+    [fetchedItems],
+  )
+
+  const categorySuggestions = useMemo(
+    () => categories.filter((c) => c.id !== "all").map((c) => c.name),
+    [categories],
+  )
+
+  const openAddDialog = () => {
+    setAddForm(createEmptyForm(selectedCategory))
+    setAddErrors({})
+    setAddServerError(null)
+    setAddDialogOpen(true)
   }
 
-  const handleDelete = (id: string) => {
-    setItems(items.filter((item) => item.id !== id))
+  const handleAddDialogToggle = (open: boolean) => {
+    setAddDialogOpen(open)
+    if (!open) {
+      setAddForm(createEmptyForm(selectedCategory))
+      setAddErrors({})
+      setAddServerError(null)
+      setAddSubmitting(false)
+    }
   }
 
-  const toggleAvailability = (id: string) => {
-    setItems(items.map((item) => (item.id === id ? { ...item, available: !item.available } : item)))
+  const handleDeleteDialogToggle = (open: boolean) => {
+    setDeleteDialogOpen(open)
+    if (!open) {
+      setDeleteSelection("")
+      setDeleteServerError(null)
+      setDeleteSubmitting(false)
+    }
   }
 
-  const stats = {
-    total: items.length,
-    available: items.filter((i) => i.available).length,
-    unavailable: items.filter((i) => !i.available).length,
-    popular: items.filter((i) => i.popular).length,
+  const handleAddFieldChange = <T extends keyof AddMenuForm>(field: T, value: AddMenuForm[T]) => {
+    setAddForm((prev) => ({ ...prev, [field]: value }))
   }
+
+  const handleAddSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
+    const errors = validateAddForm(addForm)
+    setAddErrors(errors)
+    if (Object.keys(errors).length > 0) return
+
+    try {
+      setAddSubmitting(true)
+      setAddServerError(null)
+
+      const allergens = addForm.allergens
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+
+      const payload: Record<string, unknown> = {
+        name: addForm.name.trim(),
+        category: addForm.category.trim(),
+        price: addForm.price.trim(),
+        available: addForm.available,
+        popular: addForm.popular,
+        spicy: addForm.spicy,
+      }
+
+      if (addForm.nameEn.trim()) payload.nameEn = addForm.nameEn.trim()
+      if (addForm.description.trim()) payload.description = addForm.description.trim()
+      if (addForm.image.trim()) payload.image = addForm.image.trim()
+      if (addForm.cost.trim()) payload.cost = addForm.cost.trim()
+      if (allergens.length > 0) payload.allergens = allergens
+
+      const res = await fetch("/api/menu-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        const errorMessage = detail?.detail ?? detail?.error ?? "添加菜品失败"
+        setAddServerError(typeof errorMessage === "string" ? errorMessage : "添加菜品失败")
+        toast({
+          title: "添加菜品失败",
+          description: typeof errorMessage === "string" ? errorMessage : "请稍后再试",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const created = await res.json().catch(() => null)
+      toast({
+        title: "菜品已添加",
+        description: created?.name ? `${created.name} 已加入 ${created.category}` : "菜品已添加到菜单",
+      })
+      handleAddDialogToggle(false)
+      refresh()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "添加菜品失败"
+      setAddServerError(message)
+      toast({
+        title: "添加菜品失败",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setAddSubmitting(false)
+    }
+  }
+
+  const handleDeleteSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
+    if (!deleteSelection) {
+      setDeleteServerError("请选择要删除的菜品")
+      return
+    }
+
+    try {
+      setDeleteSubmitting(true)
+      setDeleteServerError(null)
+
+      const res = await fetch(`/api/menu-items/${deleteSelection}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        const errorMessage = detail?.detail ?? detail?.error ?? "删除失败"
+        setDeleteServerError(typeof errorMessage === "string" ? errorMessage : "删除失败")
+        toast({
+          title: "删除菜品失败",
+          description: typeof errorMessage === "string" ? errorMessage : "请稍后再试",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const removed = await res.json().catch(() => null)
+      toast({
+        title: "菜品已删除",
+        description: removed?.name ? `${removed.name} 已标记为下架` : "菜品已隐藏",
+      })
+      handleDeleteDialogToggle(false)
+      refresh()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "删除菜品失败"
+      setDeleteServerError(message)
+      toast({
+        title: "删除菜品失败",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setDeleteSubmitting(false)
+    }
+  }
+
+  const hasMenuError = Boolean(menuError)
 
   return (
     <div className="space-y-6">
@@ -163,53 +321,53 @@ export function MenuManagement() {
           <h1 className="text-3xl font-bold text-foreground text-balance">菜单管理</h1>
           <p className="text-muted-foreground mt-1">管理餐厅菜品和价格</p>
         </div>
-        <Button className="gap-2" onClick={handleNew}>
-          <Plus className="w-4 h-4" />
-          添加菜品
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button className="flex-1 sm:flex-none" onClick={openAddDialog}>
+            <Plus className="w-4 h-4 mr-2" />
+            增加菜品
+          </Button>
+          <Button
+            className="flex-1 sm:flex-none"
+            variant="destructive"
+            onClick={() => handleDeleteDialogToggle(true)}
+            disabled={fetchedItems.length === 0}
+          >
+            <Minus className="w-4 h-4 mr-2" />
+            删除菜品
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <Card className="p-4 bg-card border-border">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">总菜品</p>
             <p className="text-2xl font-bold text-foreground">{stats.total}</p>
           </div>
         </Card>
-        <Card className="p-4 bg-card border-border">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">在售</p>
-            <p className="text-2xl font-bold text-primary">{stats.available}</p>
-          </div>
-        </Card>
-        <Card className="p-4 bg-card border-border">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">下架</p>
-            <p className="text-2xl font-bold text-muted-foreground">{stats.unavailable}</p>
-          </div>
-        </Card>
-        <Card className="p-4 bg-card border-border">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">热销</p>
-            <p className="text-2xl font-bold text-destructive">{stats.popular}</p>
-          </div>
-        </Card>
       </div>
 
       {/* Search and filters */}
       <Card className="p-4 bg-card border-border">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="搜索菜品名称..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索菜品名称..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
         </div>
+        {hasMenuError && (
+          <p className="text-sm text-destructive mt-3">
+            菜单数据加载失败，请检查数据库连接或{" "}
+            <button type="button" className="underline" onClick={() => refresh()}>
+              重试
+            </button>
+            。
+          </p>
+        )}
       </Card>
 
       {/* Categories and items */}
@@ -218,7 +376,7 @@ export function MenuManagement() {
         <Card className="p-4 bg-card border-border h-fit">
           <h3 className="font-semibold text-foreground mb-4">分类</h3>
           <div className="space-y-1">
-            {dynamicCategories.map((category) => (
+            {categories.map((category) => (
               <button
                 key={category.id}
                 onClick={() => setSelectedCategory(category.id)}
@@ -230,7 +388,7 @@ export function MenuManagement() {
               >
                 <span>{category.name}</span>
                 <Badge variant="secondary" className="bg-muted text-muted-foreground">
-                  {category.count}
+                  {category.count ?? 0}
                 </Badge>
               </button>
             ))}
@@ -242,294 +400,325 @@ export function MenuManagement() {
           <Card className="bg-card border-border">
             <ScrollArea className="h-[600px]">
               <div className="p-4 space-y-3">
-                {filteredItems.map((item) => (
-                  <Card
-                    key={item.id}
-                    className={`p-4 bg-muted/30 border-border hover:border-primary/50 transition-colors ${
-                      !item.available ? "opacity-60" : ""
-                    }`}
-                  >
-                    <div className="flex gap-4">
-                      {/* Image */}
-                      <div className="w-24 h-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                        {(() => {
-                          const rawSrc = (item.image ?? "").trim()
-                          const isValidAbsolute = rawSrc.startsWith("http://") || rawSrc.startsWith("https://")
-                          const isValidRelative = rawSrc.startsWith("/")
-                          const imageSrc = rawSrc && (isValidAbsolute || isValidRelative) ? rawSrc : "/placeholder.svg"
-                          return (
-                            <Image
-                              src={imageSrc}
-                              alt={item.name}
-                              width={96}
-                              height={96}
-                              className="w-full h-full object-cover"
-                              sizes="96px"
-                            />
-                          )
-                        })()}
-                      </div>
+                {menuLoading && (
+                  <div className="space-y-3">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <div key={index} className="h-28 rounded-lg bg-muted/40 animate-pulse" />
+                    ))}
+                  </div>
+                )}
 
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-foreground">{item.name}</h3>
-                              {item.popular && (
-                                <Badge className="bg-destructive text-destructive-foreground text-xs">热销</Badge>
-                              )}
-                              {!item.available && (
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-muted-foreground/20 text-muted-foreground text-xs"
-                                >
-                                  已下架
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-1">{item.nameEn}</p>
-                            {item.description && (
-                              <p className="text-xs text-muted-foreground line-clamp-1">{item.description}</p>
-                            )}
-                          </div>
+                {!menuLoading && filteredItems.length === 0 && (
+                  <div className="h-40 flex flex-col items-center justify-center text-muted-foreground gap-1">
+                    <p className="text-sm">暂无匹配的菜品</p>
+                    <p className="text-xs">尝试更换分类或清空搜索条件</p>
+                  </div>
+                )}
 
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEdit(item)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                编辑
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toggleAvailability(item.id)}>
-                                {item.available ? (
-                                  <>
-                                    <EyeOff className="w-4 h-4 mr-2" />
-                                    下架
-                                  </>
-                                ) : (
-                                  <>
-                                    <Eye className="w-4 h-4 mr-2" />
-                                    上架
-                                  </>
+                {!menuLoading &&
+                  filteredItems.map((item) => (
+                    <Card
+                      key={item.id}
+                      className="p-4 bg-muted/30 border-border hover:border-primary/50 transition-colors"
+                    >
+                      <div className="flex gap-4">
+                        {/* Image */}
+                        <div className="w-24 h-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                          {(() => {
+                            const rawSrc = (item.image ?? "").trim()
+                            const isValidAbsolute = rawSrc.startsWith("http://") || rawSrc.startsWith("https://")
+                            const isValidRelative = rawSrc.startsWith("/")
+                            const imageSrc = rawSrc && (isValidAbsolute || isValidRelative) ? rawSrc : "/placeholder.svg"
+                            return (
+                              <Image
+                                src={imageSrc}
+                                alt={item.name}
+                                width={96}
+                                height={96}
+                                className="w-full h-full object-cover"
+                                sizes="96px"
+                              />
+                            )
+                          })()}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-semibold text-foreground">{item.name}</h3>
+                                {item.popular && (
+                                  <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700">
+                                    热门
+                                  </Badge>
                                 )}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => handleDelete(item.id)} className="text-destructive">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                删除
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-
-                        {/* Details */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-0.5">售价</p>
-                            <p className="text-lg font-bold text-primary">€{item.price.toFixed(2)}</p>
+                                {typeof item.spicy === "number" && item.spicy > 0 && (
+                                  <Badge variant="outline" className="text-xs text-red-500 border-red-200">
+                                    辣度 {item.spicy}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-1">{item.nameEn}</p>
+                              {item.description && (
+                                <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
+                              )}
+                            </div>
+                            <p className="text-lg font-bold text-primary whitespace-nowrap">€{item.price.toFixed(2)}</p>
                           </div>
-                          {item.cost && (
+
+                          {/* Details */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                            {item.cost != null && (
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-0.5">成本</p>
+                                <p className="text-sm font-medium text-foreground">€{item.cost.toFixed(2)}</p>
+                              </div>
+                            )}
+                            {typeof item.sales === "number" && (
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-0.5">销量</p>
+                                <p className="text-sm font-medium text-foreground">{item.sales}</p>
+                              </div>
+                            )}
+                            {typeof item.revenue === "number" && item.revenue > 0 && (
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-0.5">营收</p>
+                                <p className="text-sm font-medium text-foreground">€{item.revenue.toFixed(0)}</p>
+                              </div>
+                            )}
                             <div>
-                              <p className="text-xs text-muted-foreground mb-0.5">成本</p>
-                              <p className="text-sm font-medium text-foreground">€{item.cost.toFixed(2)}</p>
+                              <p className="text-xs text-muted-foreground mb-0.5">分类</p>
+                              <p className="text-sm font-medium text-foreground">{item.category}</p>
                             </div>
-                          )}
-                          {item.sales && (
-                            <div>
-                              <p className="text-xs text-muted-foreground mb-0.5">销量</p>
-                              <p className="text-sm font-medium text-foreground">{item.sales}</p>
-                            </div>
-                          )}
-                          {item.revenue && (
-                            <div>
-                              <p className="text-xs text-muted-foreground mb-0.5">营收</p>
-                              <p className="text-sm font-medium text-foreground">€{item.revenue.toFixed(0)}</p>
+                          </div>
+
+                          {/* Allergens */}
+                          {item.allergens && item.allergens.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {item.allergens.map((allergen) => (
+                                <Badge
+                                  key={allergen}
+                                  variant="secondary"
+                                  className="bg-muted text-muted-foreground text-xs"
+                                >
+                                  {allergen}
+                                </Badge>
+                              ))}
                             </div>
                           )}
                         </div>
-
-                        {/* Allergens */}
-                        {item.allergens && item.allergens.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {item.allergens.map((allergen) => (
-                              <Badge
-                                key={allergen}
-                                variant="secondary"
-                                className="bg-muted text-muted-foreground text-xs"
-                              >
-                                {allergen}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  </Card>
-                ))}
+                    </Card>
+                  ))}
               </div>
             </ScrollArea>
           </Card>
         </div>
       </div>
 
-      {/* Edit/Add Dialog */}
-      <Dialog open={editDialog} onOpenChange={setEditDialog}>
+      {/* Add Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={handleAddDialogToggle}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{isNewItem ? "添加菜品" : "编辑菜品"}</DialogTitle>
-            <DialogDescription>{isNewItem ? "填写新菜品信息" : "修改菜品信息"}</DialogDescription>
-          </DialogHeader>
+          <form onSubmit={handleAddSubmit}>
+            <DialogHeader>
+              <DialogTitle>增加菜品</DialogTitle>
+              <DialogDescription>填写菜品信息，提交后会立即出现在菜单中。</DialogDescription>
+            </DialogHeader>
 
-          {selectedItem && (
             <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              {addServerError && <p className="text-sm text-destructive">{addServerError}</p>}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">中文名称 *</Label>
+                  <Label htmlFor="menu-name">中文名称 *</Label>
                   <Input
-                    id="name"
-                    value={selectedItem.name}
-                    onChange={(e) => setSelectedItem({ ...selectedItem, name: e.target.value })}
+                    id="menu-name"
+                    value={addForm.name}
+                    onChange={(e) => handleAddFieldChange("name", e.target.value)}
+                    aria-invalid={Boolean(addErrors.name)}
                     placeholder="例: 凯撒沙拉"
                   />
+                  {addErrors.name && <p className="text-xs text-destructive">{addErrors.name}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="nameEn">英文名称 *</Label>
+                  <Label htmlFor="menu-name-en">英文名称</Label>
                   <Input
-                    id="nameEn"
-                    value={selectedItem.nameEn}
-                    onChange={(e) => setSelectedItem({ ...selectedItem, nameEn: e.target.value })}
+                    id="menu-name-en"
+                    value={addForm.nameEn}
+                    onChange={(e) => handleAddFieldChange("nameEn", e.target.value)}
                     placeholder="e.g. Caesar Salad"
                   />
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="menu-category">分类 *</Label>
+                  <Input
+                    id="menu-category"
+                    list="menu-category-suggestions"
+                    value={addForm.category}
+                    onChange={(e) => handleAddFieldChange("category", e.target.value)}
+                    aria-invalid={Boolean(addErrors.category)}
+                    placeholder="例: 热菜"
+                  />
+                  {addErrors.category && <p className="text-xs text-destructive">{addErrors.category}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="menu-price">售价 (€) *</Label>
+                  <Input
+                    id="menu-price"
+                    inputMode="decimal"
+                    value={addForm.price}
+                    onChange={(e) => handleAddFieldChange("price", e.target.value)}
+                    aria-invalid={Boolean(addErrors.price)}
+                    placeholder="12.90"
+                  />
+                  {addErrors.price && <p className="text-xs text-destructive">{addErrors.price}</p>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="menu-cost">成本 (€)</Label>
+                  <Input
+                    id="menu-cost"
+                    inputMode="decimal"
+                    value={addForm.cost}
+                    onChange={(e) => handleAddFieldChange("cost", e.target.value)}
+                    aria-invalid={Boolean(addErrors.cost)}
+                    placeholder="8.5"
+                  />
+                  {addErrors.cost && <p className="text-xs text-destructive">{addErrors.cost}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="menu-spicy">辣度 (0-5)</Label>
+                  <Input
+                    id="menu-spicy"
+                    type="number"
+                    min={0}
+                    max={5}
+                    value={addForm.spicy}
+                    onChange={(e) => handleAddFieldChange("spicy", Math.min(5, Math.max(0, Number(e.target.value) || 0)))}
+                    aria-invalid={Boolean(addErrors.spicy)}
+                  />
+                  {addErrors.spicy && <p className="text-xs text-destructive">{addErrors.spicy}</p>}
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="description">描述</Label>
+                <Label htmlFor="menu-description">描述</Label>
                 <Textarea
-                  id="description"
-                  value={selectedItem.description || ""}
-                  onChange={(e) => setSelectedItem({ ...selectedItem, description: e.target.value })}
-                  placeholder="菜品描述..."
+                  id="menu-description"
+                  value={addForm.description}
+                  onChange={(e) => handleAddFieldChange("description", e.target.value)}
+                  placeholder="菜品亮点、主要原料等信息..."
                   rows={3}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="category">分类 *</Label>
-                  <Select
-                    value={selectedItem.category}
-                    onValueChange={(value) => setSelectedItem({ ...selectedItem, category: value })}
-                  >
-                    <SelectTrigger id="category">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="appetizers">开胃菜</SelectItem>
-                      <SelectItem value="main">主菜</SelectItem>
-                      <SelectItem value="pasta">意面</SelectItem>
-                      <SelectItem value="pizza">披萨</SelectItem>
-                      <SelectItem value="desserts">甜品</SelectItem>
-                      <SelectItem value="drinks">饮品</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="spicy">辣度</Label>
-                  <Select
-                    value={selectedItem.spicy?.toString() || "0"}
-                    onValueChange={(value) => setSelectedItem({ ...selectedItem, spicy: Number.parseInt(value) })}
-                  >
-                    <SelectTrigger id="spicy">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">不辣</SelectItem>
-                      <SelectItem value="1">微辣 🌶️</SelectItem>
-                      <SelectItem value="2">中辣 🌶️🌶️</SelectItem>
-                      <SelectItem value="3">特辣 🌶️🌶️🌶️</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">售价 (€) *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    value={selectedItem.price}
-                    onChange={(e) => setSelectedItem({ ...selectedItem, price: Number.parseFloat(e.target.value) })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cost">成本 (€)</Label>
-                  <Input
-                    id="cost"
-                    type="number"
-                    step="0.01"
-                    value={selectedItem.cost || 0}
-                    onChange={(e) => setSelectedItem({ ...selectedItem, cost: Number.parseFloat(e.target.value) })}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="menu-image">图片 URL 或相对路径</Label>
+                <Input
+                  id="menu-image"
+                  value={addForm.image}
+                  onChange={(e) => handleAddFieldChange("image", e.target.value)}
+                  placeholder="/images/dishes/salad.jpg"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="image">图片URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="image"
-                    value={selectedItem.image}
-                    onChange={(e) => setSelectedItem({ ...selectedItem, image: e.target.value })}
-                    placeholder="/path/to/image.jpg"
-                  />
-                  <Button variant="outline" size="icon">
-                    <ImageIcon className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                <div className="space-y-0.5">
-                  <Label htmlFor="available">上架状态</Label>
-                  <p className="text-xs text-muted-foreground">是否在菜单中显示此菜品</p>
-                </div>
-                <Switch
-                  id="available"
-                  checked={selectedItem.available}
-                  onCheckedChange={(checked) => setSelectedItem({ ...selectedItem, available: checked })}
+                <Label htmlFor="menu-allergens">过敏原（逗号分隔）</Label>
+                <Input
+                  id="menu-allergens"
+                  value={addForm.allergens}
+                  onChange={(e) => handleAddFieldChange("allergens", e.target.value)}
+                  placeholder="gluten, nuts"
                 />
               </div>
 
-              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                <div className="space-y-0.5">
-                  <Label htmlFor="popular">热销标记</Label>
-                  <p className="text-xs text-muted-foreground">标记为热销菜品</p>
-                </div>
-                <Switch
-                  id="popular"
-                  checked={selectedItem.popular || false}
-                  onCheckedChange={(checked) => setSelectedItem({ ...selectedItem, popular: checked })}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">立即上架</p>
+                    <p className="text-xs text-muted-foreground">关闭后将以“缺货”状态存在</p>
+                  </div>
+                  <Switch checked={addForm.available} onCheckedChange={(checked) => handleAddFieldChange("available", checked)} />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">热门菜品</p>
+                    <p className="text-xs text-muted-foreground">在列表中打上热门徽标</p>
+                  </div>
+                  <Switch checked={addForm.popular} onCheckedChange={(checked) => handleAddFieldChange("popular", checked)} />
+                </label>
               </div>
             </div>
-          )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialog(false)}>
-              取消
-            </Button>
-            <Button onClick={handleSave}>{isNewItem ? "添加" : "保存"}</Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => handleAddDialogToggle(false)}>
+                取消
+              </Button>
+              <Button type="submit" disabled={addSubmitting}>
+                {addSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                提交
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={handleDeleteDialogToggle}>
+        <DialogContent className="max-w-lg">
+          <form onSubmit={handleDeleteSubmit}>
+            <DialogHeader>
+              <DialogTitle>删除菜品</DialogTitle>
+              <DialogDescription>删除后该菜品将被软删除，并在列表中隐藏。</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {deleteServerError && <p className="text-sm text-destructive">{deleteServerError}</p>}
+              {deletableItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground">暂无可删除的菜品。</p>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="delete-menu-item">选择菜品 *</Label>
+                  <Select value={deleteSelection} onValueChange={setDeleteSelection}>
+                    <SelectTrigger id="delete-menu-item">
+                      <SelectValue placeholder="请选择要删除的菜品" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deletableItems.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}（{item.category}）
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => handleDeleteDialogToggle(false)}>
+                取消
+              </Button>
+              <Button type="submit" variant="destructive" disabled={!deleteSelection || deleteSubmitting}>
+                {deleteSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                删除
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <datalist id="menu-category-suggestions">
+        {categorySuggestions.map((entry) => (
+          <option key={entry} value={entry} />
+        ))}
+      </datalist>
     </div>
   )
 }

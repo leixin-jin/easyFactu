@@ -5,6 +5,12 @@
   - `cp doc/agents/template/features/feature.md doc/agents/features/<slug>.md`
 - 在本文件追加链接到新功能说明，或直接在下方的“Run: <Feature>”中列出任务供 Codex 执行。
 
+索引栏
+- [功能文档索引](#功能文档索引)
+- [Run: Display Restaurant Tables](#run-display-restaurant-tables)
+- [Run: Display Menu Items](#run-display-menu-items)
+- [Run: Order Management](#run-order-management)
+
 功能文档索引
 - [Display Restaurant Tables](doc/agents/features/display_table-plan.md)
 - [Display Menu Items](doc/agents/features/display_menu_items-PLAN.md)

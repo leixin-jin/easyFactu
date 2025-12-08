@@ -158,7 +158,7 @@ export function POSInterface() {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.nameEn.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesCategory && matchesSearch && item.available
+    return matchesCategory && matchesSearch
   })
 
   const addToCart = (item: MenuItem) => {
