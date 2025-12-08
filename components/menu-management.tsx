@@ -21,7 +21,6 @@ import {
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface Category {
@@ -35,13 +34,8 @@ interface AddMenuForm {
   nameEn: string
   category: string
   price: string
-  cost: string
   description: string
   image: string
-  available: boolean
-  popular: boolean
-  spicy: number
-  allergens: string
 }
 
 type AddMenuFormErrors = Partial<Record<keyof AddMenuForm, string>>
@@ -53,20 +47,15 @@ const createEmptyForm = (category?: string): AddMenuForm => ({
   nameEn: "",
   category: category && category !== "all" ? category : "",
   price: "",
-  cost: "",
   description: "",
   image: "",
-  available: true,
-  popular: false,
-  spicy: 0,
-  allergens: "",
 })
 
 const validateAddForm = (form: AddMenuForm): AddMenuFormErrors => {
   const errors: AddMenuFormErrors = {}
 
   if (!form.name.trim()) {
-    errors.name = "请输入菜品名称"
+    errors.name = "请输入英文名称"
   }
 
   if (!form.category.trim()) {
@@ -80,19 +69,6 @@ const validateAddForm = (form: AddMenuForm): AddMenuFormErrors => {
     errors.price = "售价需为最多两位小数的正数"
   } else if (Number.parseFloat(priceValue) <= 0) {
     errors.price = "售价必须大于 0"
-  }
-
-  const costValue = form.cost.trim()
-  if (costValue) {
-    if (!DECIMAL_PATTERN.test(costValue)) {
-      errors.cost = "成本需为最多两位小数的正数"
-    } else if (Number.parseFloat(costValue) < 0) {
-      errors.cost = "成本不得小于 0"
-    }
-  }
-
-  if (!Number.isInteger(form.spicy) || form.spicy < 0 || form.spicy > 5) {
-    errors.spicy = "辣度范围为 0-5"
   }
 
   return errors
@@ -206,25 +182,15 @@ export function MenuManagement() {
       setAddSubmitting(true)
       setAddServerError(null)
 
-      const allergens = addForm.allergens
-        .split(",")
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0)
-
       const payload: Record<string, unknown> = {
         name: addForm.name.trim(),
         category: addForm.category.trim(),
         price: addForm.price.trim(),
-        available: addForm.available,
-        popular: addForm.popular,
-        spicy: addForm.spicy,
       }
 
       if (addForm.nameEn.trim()) payload.nameEn = addForm.nameEn.trim()
       if (addForm.description.trim()) payload.description = addForm.description.trim()
       if (addForm.image.trim()) payload.image = addForm.image.trim()
-      if (addForm.cost.trim()) payload.cost = addForm.cost.trim()
-      if (allergens.length > 0) payload.allergens = allergens
 
       const res = await fetch("/api/menu-items", {
         method: "POST",
@@ -448,16 +414,6 @@ export function MenuManagement() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold text-foreground">{item.name}</h3>
-                                {item.popular && (
-                                  <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700">
-                                    热门
-                                  </Badge>
-                                )}
-                                {typeof item.spicy === "number" && item.spicy > 0 && (
-                                  <Badge variant="outline" className="text-xs text-red-500 border-red-200">
-                                    辣度 {item.spicy}
-                                  </Badge>
-                                )}
                               </div>
                               <p className="text-sm text-muted-foreground mb-1">{item.nameEn}</p>
                               {item.description && (
@@ -468,45 +424,12 @@ export function MenuManagement() {
                           </div>
 
                           {/* Details */}
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                            {item.cost != null && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-0.5">成本</p>
-                                <p className="text-sm font-medium text-foreground">€{item.cost.toFixed(2)}</p>
-                              </div>
-                            )}
-                            {typeof item.sales === "number" && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-0.5">销量</p>
-                                <p className="text-sm font-medium text-foreground">{item.sales}</p>
-                              </div>
-                            )}
-                            {typeof item.revenue === "number" && item.revenue > 0 && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-0.5">营收</p>
-                                <p className="text-sm font-medium text-foreground">€{item.revenue.toFixed(0)}</p>
-                              </div>
-                            )}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                             <div>
                               <p className="text-xs text-muted-foreground mb-0.5">分类</p>
                               <p className="text-sm font-medium text-foreground">{item.category}</p>
                             </div>
                           </div>
-
-                          {/* Allergens */}
-                          {item.allergens && item.allergens.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {item.allergens.map((allergen) => (
-                                <Badge
-                                  key={allergen}
-                                  variant="secondary"
-                                  className="bg-muted text-muted-foreground text-xs"
-                                >
-                                  {allergen}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
                         </div>
                       </div>
                     </Card>
@@ -531,23 +454,23 @@ export function MenuManagement() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="menu-name">中文名称 *</Label>
+                  <Label htmlFor="menu-name-en">英文名称 *</Label>
                   <Input
-                    id="menu-name"
+                    id="menu-name-en"
                     value={addForm.name}
                     onChange={(e) => handleAddFieldChange("name", e.target.value)}
                     aria-invalid={Boolean(addErrors.name)}
-                    placeholder="例: 凯撒沙拉"
+                    placeholder="e.g. Caesar Salad"
                   />
                   {addErrors.name && <p className="text-xs text-destructive">{addErrors.name}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="menu-name-en">英文名称</Label>
+                  <Label htmlFor="menu-name-zh">中文名称</Label>
                   <Input
-                    id="menu-name-en"
+                    id="menu-name-zh"
                     value={addForm.nameEn}
                     onChange={(e) => handleAddFieldChange("nameEn", e.target.value)}
-                    placeholder="e.g. Caesar Salad"
+                    placeholder="例: 凯撒沙拉"
                   />
                 </div>
               </div>
@@ -555,13 +478,29 @@ export function MenuManagement() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="menu-category">分类 *</Label>
+                  <Select value={addForm.category} onValueChange={(value) => handleAddFieldChange("category", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择已有分类" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categorySuggestions.length === 0 && (
+                        <SelectItem value="" disabled>
+                          暂无分类
+                        </SelectItem>
+                      )}
+                      {categorySuggestions.map((entry) => (
+                        <SelectItem key={entry} value={entry}>
+                          {entry}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Input
                     id="menu-category"
-                    list="menu-category-suggestions"
                     value={addForm.category}
                     onChange={(e) => handleAddFieldChange("category", e.target.value)}
                     aria-invalid={Boolean(addErrors.category)}
-                    placeholder="例: 热菜"
+                    placeholder="或输入新分类"
                   />
                   {addErrors.category && <p className="text-xs text-destructive">{addErrors.category}</p>}
                 </div>
@@ -576,34 +515,6 @@ export function MenuManagement() {
                     placeholder="12.90"
                   />
                   {addErrors.price && <p className="text-xs text-destructive">{addErrors.price}</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="menu-cost">成本 (€)</Label>
-                  <Input
-                    id="menu-cost"
-                    inputMode="decimal"
-                    value={addForm.cost}
-                    onChange={(e) => handleAddFieldChange("cost", e.target.value)}
-                    aria-invalid={Boolean(addErrors.cost)}
-                    placeholder="8.5"
-                  />
-                  {addErrors.cost && <p className="text-xs text-destructive">{addErrors.cost}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="menu-spicy">辣度 (0-5)</Label>
-                  <Input
-                    id="menu-spicy"
-                    type="number"
-                    min={0}
-                    max={5}
-                    value={addForm.spicy}
-                    onChange={(e) => handleAddFieldChange("spicy", Math.min(5, Math.max(0, Number(e.target.value) || 0)))}
-                    aria-invalid={Boolean(addErrors.spicy)}
-                  />
-                  {addErrors.spicy && <p className="text-xs text-destructive">{addErrors.spicy}</p>}
                 </div>
               </div>
 
@@ -626,33 +537,6 @@ export function MenuManagement() {
                   onChange={(e) => handleAddFieldChange("image", e.target.value)}
                   placeholder="/images/dishes/salad.jpg"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="menu-allergens">过敏原（逗号分隔）</Label>
-                <Input
-                  id="menu-allergens"
-                  value={addForm.allergens}
-                  onChange={(e) => handleAddFieldChange("allergens", e.target.value)}
-                  placeholder="gluten, nuts"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">立即上架</p>
-                    <p className="text-xs text-muted-foreground">关闭后将以“缺货”状态存在</p>
-                  </div>
-                  <Switch checked={addForm.available} onCheckedChange={(checked) => handleAddFieldChange("available", checked)} />
-                </label>
-                <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">热门菜品</p>
-                    <p className="text-xs text-muted-foreground">在列表中打上热门徽标</p>
-                  </div>
-                  <Switch checked={addForm.popular} onCheckedChange={(checked) => handleAddFieldChange("popular", checked)} />
-                </label>
               </div>
             </div>
 
@@ -714,11 +598,7 @@ export function MenuManagement() {
         </DialogContent>
       </Dialog>
 
-      <datalist id="menu-category-suggestions">
-        {categorySuggestions.map((entry) => (
-          <option key={entry} value={entry} />
-        ))}
-      </datalist>
+      {/* datalist removed now that Select provides options */}
     </div>
   )
 }

@@ -38,14 +38,6 @@ const createMenuItemSchema = z.object({
     .refine((value) => hasAtMostTwoDecimals(value), {
       message: "Price must have at most two decimals",
     }),
-  cost: coerceMoney
-    .refine((value) => value >= 0, {
-      message: "Cost must be equal or greater than 0",
-    })
-    .refine((value) => hasAtMostTwoDecimals(value), {
-      message: "Cost must have at most two decimals",
-    })
-    .optional(),
   description: z
     .string()
     .trim()
@@ -56,13 +48,6 @@ const createMenuItemSchema = z.object({
     .string()
     .trim()
     .max(512)
-    .optional()
-    .transform((value) => (value && value.length > 0 ? value : null)),
-  available: z.boolean().optional(),
-  popular: z.boolean().optional(),
-  spicy: z.coerce.number().int().min(0).max(5).optional().default(0),
-  allergens: z
-    .array(z.string().trim().min(1).max(40))
     .optional()
     .transform((value) => (value && value.length > 0 ? value : null)),
 });
@@ -121,19 +106,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const {
-    name,
-    nameEn,
-    category,
-    price,
-    cost,
-    description,
-    image,
-    available = true,
-    popular = false,
-    spicy = 0,
-    allergens,
-  } = parseResult.data;
+  const { name, nameEn, category, price, description, image } = parseResult.data;
 
   try {
     const db = getDb();
@@ -167,13 +140,8 @@ export async function POST(req: NextRequest) {
         nameEn,
         category,
         price: toMoneyString(price),
-        cost: cost != null ? toMoneyString(cost) : null,
         description,
         image,
-        available,
-        popular,
-        spicy,
-        allergens,
       })
       .returning();
 

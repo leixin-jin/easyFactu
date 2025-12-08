@@ -10,13 +10,7 @@ export interface UIMenuItem {
   price: number
   image: string | null
   available: boolean
-  popular?: boolean
-  spicy?: number
-  cost?: number | null
   description?: string | null
-  allergens?: string[]
-  sales?: number | null
-  revenue?: number
 }
 
 export interface UICategory {

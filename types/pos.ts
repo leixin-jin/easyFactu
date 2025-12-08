@@ -6,10 +6,8 @@ export interface MenuItem {
   nameEn: string
   category: string
   price: number
-  image: string
+  image: string | null
   available: boolean
-  popular?: boolean
-  spicy?: number
 }
 
 export interface CartItem extends MenuItem {
