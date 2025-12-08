@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 export interface UIMenuItem {
   id: string
@@ -8,15 +8,21 @@ export interface UIMenuItem {
   nameEn: string
   category: string
   price: number
-  image: string
+  image: string | null
   available: boolean
   popular?: boolean
   spicy?: number
+  cost?: number | null
+  description?: string | null
+  allergens?: string[]
+  sales?: number | null
+  revenue?: number
 }
 
 export interface UICategory {
   id: string
   name: string
+  count?: number
 }
 
 interface UseMenuDataOptions {
@@ -32,6 +38,7 @@ export function useMenuData(options: UseMenuDataOptions = {}) {
   )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const fallbackItems = fallback?.items
   const fallbackCategories = fallback?.categories
@@ -62,7 +69,7 @@ export function useMenuData(options: UseMenuDataOptions = {}) {
           if (fallbackCategories) setCategories(fallbackCategories)
         }
       } finally {
-        setLoading(false)
+        if (!aborted) setLoading(false)
       }
     }
 
@@ -70,7 +77,11 @@ export function useMenuData(options: UseMenuDataOptions = {}) {
     return () => {
       aborted = true
     }
-  }, [fallbackCategories, fallbackItems])
+  }, [fallbackCategories, fallbackItems, reloadKey])
 
-  return { items, categories, loading, error }
+  const refresh = useCallback(() => {
+    setReloadKey((key) => key + 1)
+  }, [])
+
+  return { items, categories, loading, error, refresh }
 }
