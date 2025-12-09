@@ -14,27 +14,9 @@ import {
 import { sql } from "drizzle-orm";
 
 // Enums
-export const staffStatus = pgEnum("staff_status", ["active", "inactive"]);
 export const tableStatus = pgEnum("table_status", ["idle", "occupied"]);
 export const orderStatus = pgEnum("order_status", ["open", "paid", "cancelled"]);
 export const transactionType = pgEnum("transaction_type", ["income", "expense"]);
-
-// Staff
-export const staff = pgTable("staff", {
-  id: uuid("id").default(sql`gen_random_uuid()`).primaryKey().notNull(),
-  name: text("name").notNull(),
-  role: text("role").notNull(),
-  phone: text("phone"),
-  email: text("email"),
-  status: staffStatus("status").notNull().default("active"),
-  salary: integer("salary").notNull().default(0),
-  joinDate: date("join_date").notNull().default(sql`now()`),
-  performance: integer("performance").notNull().default(0),
-  ordersServed: integer("orders_served").default(0),
-  revenue: numeric("revenue", { precision: 12, scale: 2 }).default("0"),
-  createdAt: timestamp("created_at", { withTimezone: false }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: false }).defaultNow().notNull(),
-});
 
 // Menu Items
 export const menuItems = pgTable(
@@ -69,7 +51,6 @@ export const restaurantTables = pgTable(
     currentGuests: integer("current_guests").default(0),
     startedAt: timestamp("started_at", { withTimezone: false }),
     amount: numeric("amount", { precision: 12, scale: 2 }).default("0"),
-    waiterId: uuid("waiter_id").references(() => staff.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: false }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: false }).defaultNow().notNull(),
   },
@@ -85,7 +66,6 @@ export const orders = pgTable(
   {
     id: uuid("id").default(sql`gen_random_uuid()`).primaryKey().notNull(),
     tableId: uuid("table_id").references(() => restaurantTables.id, { onDelete: "set null" }),
-    staffId: uuid("staff_id").references(() => staff.id, { onDelete: "set null" }),
     status: orderStatus("status").notNull().default("open"),
     subtotal: numeric("subtotal", { precision: 12, scale: 2 }).default("0"),
     discount: numeric("discount", { precision: 12, scale: 2 }).default("0"),
@@ -147,20 +127,16 @@ export const transactions = pgTable(
 );
 
 export const schema = {
-  staff,
   menuItems,
   restaurantTables,
   orders,
   orderItems,
   transactions,
-  staffStatus,
   tableStatus,
   orderStatus,
   transactionType,
 };
 
-export type Staff = typeof staff.$inferSelect;
-export type NewStaff = typeof staff.$inferInsert;
 export type MenuItem = typeof menuItems.$inferSelect;
 export type NewMenuItem = typeof menuItems.$inferInsert;
 export type RestaurantTable = typeof restaurantTables.$inferSelect;

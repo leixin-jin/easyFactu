@@ -43,7 +43,6 @@ const mockTables: Table[] = [
     startTime: "18:30",
     duration: "1h 15m",
     amount: 156.8,
-    waiter: "小李",
     orderId: "20251029001",
   },
   {
@@ -61,7 +60,6 @@ const mockTables: Table[] = [
     status: "idle",
     currentGuests: 2,
     startTime: "20:00",
-    waiter: "小王",
   },
   {
     id: "4",
@@ -73,7 +71,6 @@ const mockTables: Table[] = [
     startTime: "19:00",
     duration: "45m",
     amount: 234.5,
-    waiter: "小张",
     orderId: "20251029002",
   },
   {
@@ -93,7 +90,6 @@ const mockTables: Table[] = [
     startTime: "18:00",
     duration: "1h 45m",
     amount: 568.0,
-    waiter: "小刘",
     orderId: "20251029003",
   },
   {
@@ -104,7 +100,6 @@ const mockTables: Table[] = [
     status: "idle",
     currentGuests: 10,
     startTime: "20:30",
-    waiter: "小陈",
   },
   {
     id: "8",
@@ -130,7 +125,6 @@ const mockTables: Table[] = [
     startTime: "19:15",
     duration: "30m",
     amount: 89.5,
-    waiter: "小李",
     orderId: "20251029004",
   },
   {
