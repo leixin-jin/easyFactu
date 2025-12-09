@@ -59,7 +59,5 @@ export default {
       },
     },
   },
-  // Tailwind plugin 需使用 require，这里保留 require 并显式忽略 TS 对 require 的限制
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   plugins: [require("tailwindcss-animate")],
 } satisfies Config;

@@ -14,7 +14,6 @@ export interface RestaurantTableView {
   currentGuests?: number
   startTime?: string
   duration?: string
-  waiter?: string
   orderId?: string
 }
 
@@ -132,4 +131,3 @@ export function useRestaurantTables(options: UseRestaurantTablesOptions = {}) {
     groupedTablesByArea,
   }
 }
-

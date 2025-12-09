@@ -7,7 +7,6 @@ import {
   ShoppingCart,
   UtensilsCrossed,
   Wallet,
-  Users,
   BarChart3,
   Settings,
   Bell,
@@ -28,7 +27,6 @@ const navigation = [
   { name: "点单", href: "/pos", icon: ShoppingCart },
   { name: "菜单", href: "/menu", icon: UtensilsCrossed },
   { name: "财务", href: "/finance", icon: Wallet },
-  { name: "人员", href: "/staff", icon: Users },
   { name: "报表", href: "/reports", icon: BarChart3 },
   { name: "设置", href: "/settings", icon: Settings },
 ]
