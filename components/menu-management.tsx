@@ -85,6 +85,7 @@ export function MenuManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const [addForm, setAddForm] = useState<AddMenuForm>(createEmptyForm())
+  const [customCategory, setCustomCategory] = useState("")
   const [addErrors, setAddErrors] = useState<AddMenuFormErrors>({})
   const [addServerError, setAddServerError] = useState<string | null>(null)
   const [addSubmitting, setAddSubmitting] = useState(false)
@@ -142,8 +143,11 @@ export function MenuManagement() {
     [categories],
   )
 
+  const selectedExistingCategory = categorySuggestions.includes(addForm.category) ? addForm.category : ""
+
   const openAddDialog = () => {
     setAddForm(createEmptyForm(selectedCategory))
+    setCustomCategory("")
     setAddErrors({})
     setAddServerError(null)
     setAddDialogOpen(true)
@@ -153,6 +157,7 @@ export function MenuManagement() {
     setAddDialogOpen(open)
     if (!open) {
       setAddForm(createEmptyForm(selectedCategory))
+      setCustomCategory("")
       setAddErrors({})
       setAddServerError(null)
       setAddSubmitting(false)
@@ -170,6 +175,16 @@ export function MenuManagement() {
 
   const handleAddFieldChange = <T extends keyof AddMenuForm>(field: T, value: AddMenuForm[T]) => {
     setAddForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleCategorySelect = (value: string) => {
+    setCustomCategory("")
+    handleAddFieldChange("category", value)
+  }
+
+  const handleCustomCategoryChange = (value: string) => {
+    setCustomCategory(value)
+    handleAddFieldChange("category", value)
   }
 
   const handleAddSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
@@ -478,8 +493,8 @@ export function MenuManagement() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="menu-category">分类 *</Label>
-                  <Select value={addForm.category} onValueChange={(value) => handleAddFieldChange("category", value)}>
-                    <SelectTrigger>
+                  <Select value={selectedExistingCategory} onValueChange={handleCategorySelect}>
+                    <SelectTrigger id="menu-category">
                       <SelectValue placeholder="选择已有分类" />
                     </SelectTrigger>
                     <SelectContent>
@@ -496,10 +511,11 @@ export function MenuManagement() {
                     </SelectContent>
                   </Select>
                   <Input
-                    id="menu-category"
-                    value={addForm.category}
-                    onChange={(e) => handleAddFieldChange("category", e.target.value)}
+                    id="menu-new-category"
+                    value={customCategory}
+                    onChange={(e) => handleCustomCategoryChange(e.target.value)}
                     aria-invalid={Boolean(addErrors.category)}
+                    aria-label="新分类"
                     placeholder="或输入新分类"
                   />
                   {addErrors.category && <p className="text-xs text-destructive">{addErrors.category}</p>}

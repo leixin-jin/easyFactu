@@ -71,6 +71,8 @@ export function PosOrderSidebar({
   onOpenSplit,
   onOpenMerge,
 }: PosOrderSidebarProps) {
+  const sortedTables = [...tables].sort((a, b) => a.number.localeCompare(b.number, "zh-CN"))
+
   return (
     <Card className="w-96 h-full flex flex-col bg-card border-border">
       <div className="p-4 border-b border-border">
@@ -88,7 +90,7 @@ export function PosOrderSidebar({
             <SelectValue placeholder="选择桌台" />
           </SelectTrigger>
           <SelectContent>
-            {tables.map((table) => (
+            {sortedTables.map((table) => (
               <SelectItem key={table.id} value={table.id}>
                 {table.number}
               </SelectItem>
