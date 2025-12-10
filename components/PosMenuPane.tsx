@@ -45,47 +45,43 @@ export function PosMenuPane({
 
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground text-balance">点单系统</h1>
-          <p className="text-muted-foreground mt-1">
-            {currentTableNumber ? `当前桌台: ${currentTableNumber}` : "选择菜品并添加到订单"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/tables">
-            <Button variant="outline" size="sm" className="gap-2">
-              <ArrowLeft className="w-4 h-4" /> 返回桌台
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="搜索菜品..."
-          value={searchQuery}
-          onChange={(e) => onSearchQueryChange(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex justify-end">
+        <Link href="/tables">
+          <Button variant="outline" size="sm" className="gap-2">
+            <ArrowLeft className="w-4 h-4" />
+            返回桌台
+          </Button>
+        </Link>
       </div>
 
       {/* Categories */}
       <Tabs
         value={selectedCategory}
         onValueChange={onCategoryChange}
-        className="flex-1 flex flex-col overflow-hidden"
+        className="flex-1 flex flex-col overflow-hidden gap-3"
       >
-        <TabsList className="w-full justify-start overflow-x-auto">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 !bg-transparent !p-0 !h-auto !w-full max-h-24 overflow-y-auto pr-1">
           {menuCategories.map((category) => (
-            <TabsTrigger key={category.id} value={category.id} className="flex-shrink-0">
+            <TabsTrigger
+              key={category.id}
+              value={category.id}
+              className="flex-shrink-0 !h-10 text-sm"
+            >
               {category.name}
             </TabsTrigger>
           ))}
         </TabsList>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索菜品..."
+            value={searchQuery}
+            onChange={(e) => onSearchQueryChange(e.target.value)}
+            className="pl-9"
+          />
+        </div>
 
         <TabsContent value={selectedCategory} className="flex-1 mt-4 overflow-hidden">
           <ScrollArea className="h-full">
