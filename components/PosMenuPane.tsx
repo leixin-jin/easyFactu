@@ -89,14 +89,14 @@ export function PosMenuPane({
 
         <TabsContent value={selectedCategory} className="flex-1 mt-4 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3 pb-3">
               {filteredItems.map((item) => (
                 <Card
                   key={item.id}
-                  className="overflow-hidden cursor-pointer hover:border-primary transition-colors group"
+                  className="overflow-hidden cursor-pointer hover:border-primary transition-colors group border-border/70"
                   onClick={() => onAddToCart(item)}
                 >
-                  <div className="aspect-square relative overflow-hidden bg-muted">
+                  <div className="relative overflow-hidden bg-muted" style={{ aspectRatio: "4 / 3" }}>
                     {(() => {
                       const rawSrc = (item.image ?? "").trim()
                       const isValidAbsolute = rawSrc.startsWith("http://") || rawSrc.startsWith("https://")
@@ -114,14 +114,14 @@ export function PosMenuPane({
                       )
                     })()}
                   </div>
-                  <div className="p-3 space-y-1">
+                  <div className="p-2.5 space-y-0.5">
                     <h3 className="font-medium text-foreground text-sm leading-tight">{item.name}</h3>
-                    <p className="text-xs text-muted-foreground">{item.nameEn}</p>
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-lg font-bold text-primary">€{item.price.toFixed(2)}</span>
+                    <p className="text-[11px] text-muted-foreground">{item.nameEn}</p>
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-base font-semibold text-primary">€{item.price.toFixed(2)}</span>
                       <Button
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-6 w-6"
                         onClick={(e) => {
                           e.stopPropagation()
                           onAddToCart(item)
