@@ -415,13 +415,14 @@ export function TableManagement() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {areaTables.map((table) => {
                   const config = statusConfig[table.status]
+                  const isOccupied = table.status === "occupied"
                   return (
                     <Card
                       key={table.id}
-                      className={`p-4 bg-card border-2 transition-all cursor-pointer hover:shadow-lg ${
-                        table.status === "idle"
-                          ? "border-primary/30 hover:border-primary"
-                          : "border-destructive/30 hover:border-destructive"
+                      className={`p-4 border-2 transition-all cursor-pointer hover:shadow-lg ${
+                        isOccupied
+                          ? "bg-destructive/25 border-destructive/50 hover:border-destructive"
+                          : "bg-card border-primary/30 hover:border-primary"
                       }`}
                       onClick={() => goToPOS(table)}
                     >
@@ -477,10 +478,13 @@ export function TableManagement() {
               <tbody>
                 {sortedTables.map((table) => {
                   const config = statusConfig[table.status]
+                  const isOccupied = table.status === "occupied"
                   return (
                     <tr
                       key={table.id}
-                      className="border-b border-border hover:bg-muted/30 transition-colors cursor-pointer"
+                      className={`border-b border-border transition-colors cursor-pointer ${
+                        isOccupied ? "bg-destructive/10 hover:bg-destructive/20" : "hover:bg-muted/30"
+                      }`}
                       onClick={() => goToPOS(table)}
                     >
                       <td className="p-4">
