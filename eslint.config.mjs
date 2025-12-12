@@ -2,7 +2,7 @@ import next from "eslint-config-next";
 
 const config = [
   {
-    ignores: ["node_modules", ".next"],
+    ignores: ["node_modules", ".next", "coverage"],
   },
   ...next.map((cfg) =>
     cfg?.name === "next"
