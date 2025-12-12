@@ -1,9 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useMenuData } from "@/hooks/useMenuData"
 import { useToast } from "@/hooks/use-toast"
@@ -18,40 +15,15 @@ import { PosOrderSidebar } from "@/components/PosOrderSidebar"
 import { PosCheckoutDialog } from "@/components/PosCheckoutDialog"
 import { SplitTableDialog, MergeTableDialog } from "@/components/TableTransferDialogs"
 import type {
-  CartItem,
   CheckoutReceiptData,
   MenuItem,
   ReceiptItem,
 } from "@/types/pos"
 import { useTableTransfer } from "@/hooks/useTableTransfer"
-
-// 分类改为从 /api/menu-items 获取（通过 useMenuData），已移除菜单 mock
-
-// 仅用于接口失败时的降级回退
-const mockTables: TableOption[] = [
-  { id: "1", number: "A-01", status: "occupied" },
-  { id: "2", number: "A-02", status: "idle" },
-  { id: "3", number: "A-03", status: "occupied" },
-  { id: "4", number: "B-01", status: "occupied" },
-  { id: "5", number: "B-02", status: "idle" },
-]
-
-const errorCodeToMessage: Record<string, string> = {
-  SUBTOTAL_MISMATCH: "订单金额已在其他终端更新，请刷新后按最新金额重新结账。",
-  TOTAL_MISMATCH: "订单金额已在其他终端更新，请刷新后按最新金额重新结账。",
-  AA_QUANTITY_EXCEEDS_ORDER: "AA 份数超过订单中可分配的数量，请检查选择。",
-  AA_QUANTITY_CONFLICT: "AA 结账时菜品数量发生冲突，请刷新后重试。",
-  AA_ITEMS_REQUIRED: "AA 结账至少需要选择一项菜品。",
-  INSUFFICIENT_RECEIVED_AMOUNT: "收款金额不足，请确认实收金额大于等于应付金额。",
-  ITEM_FULLY_PAID: "该菜品已全部结清，无法再次修改或 AA。",
-  DECREMENT_BELOW_PAID_QUANTITY: "不能将数量减到已支付份数以下。",
-  REMOVE_PAID_ITEM_FORBIDDEN: "已支付或部分支付的菜品不能被移除。",
-  ORDER_NOT_OPEN: "订单已不在进行中状态，无法结账。",
-  ORDER_EMPTY: "当前订单没有任何菜品，无法结账。",
-  TABLE_NOT_FOUND: "未找到对应桌台，请刷新页面后重试。",
-  ORDER_NOT_FOUND: "未找到对应订单，请刷新页面后重试。",
-  OPEN_ORDER_ALREADY_EXISTS: "该桌台已存在进行中的订单，请刷新后重试。",
-}
+import { usePosCart } from "@/hooks/usePosCart"
+import { getErrorMessage } from "@/lib/constants"
+import { mockTables } from "@/lib/mocks"
+import { PosReceiptPreview } from "@/components/PosReceiptPreview"
 
 export function POSInterface() {
   const router = useRouter()
@@ -69,10 +41,9 @@ export function POSInterface() {
 
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
-  // 当前待提交批次（未落库）
-  const [cart, setCart] = useState<CartItem[]>([])
-  // 当前选中桌台及其订单
   const [selectedTable, setSelectedTable] = useState<string>("")
+
+  const { cart, addToCart, updateQuantity, removeFromCart, clearCart } = usePosCart()
   const [splitTableDialog, setSplitTableDialog] = useState(false)
   const [mergeTableDialog, setMergeTableDialog] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
@@ -161,29 +132,6 @@ export function POSInterface() {
     return matchesCategory && matchesSearch
   })
 
-  const addToCart = (item: MenuItem) => {
-    const existingItem = cart.find((cartItem) => cartItem.id === item.id)
-    if (existingItem) {
-      setCart(
-        cart.map((cartItem) => (cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem)),
-      )
-    } else {
-      setCart([...cart, { ...item, quantity: 1 }])
-    }
-  }
-
-  const updateQuantity = (id: string, change: number) => {
-    setCart(
-      cart
-        .map((item) => (item.id === id ? { ...item, quantity: Math.max(0, item.quantity + change) } : item))
-        .filter((item) => item.quantity > 0),
-    )
-  }
-
-  const removeFromCart = (id: string) => {
-    setCart(cart.filter((item) => item.id !== id))
-  }
-
   const handleDecreasePersistedItem = (itemId: string) => {
     decreasePersistedItem(itemId)
   }
@@ -207,7 +155,7 @@ export function POSInterface() {
   const handleSubmitBatch = async () => {
     const success = await submitBatch(cart, paymentMethod)
     if (success) {
-      setCart([])
+      clearCart()
     }
   }
 
@@ -336,11 +284,9 @@ export function POSInterface() {
       if (!checkoutRes.ok) {
         const rawMessage = (checkoutData && (checkoutData.error as string)) || ""
         const code = (checkoutData && (checkoutData.code as string)) || ""
-        const mapped = code && errorCodeToMessage[code]
-        const message =
-          mapped ||
-          rawMessage ||
-          (code ? `结账失败（错误码：${code}）` : `结账失败 (${checkoutRes.status})`)
+        const message = code
+          ? getErrorMessage(code, rawMessage)
+          : rawMessage || `结账失败 (${checkoutRes.status})`
 
         setOrderError(message)
         toast({
@@ -361,7 +307,7 @@ export function POSInterface() {
       }
 
       checkoutActions.resetCheckout()
-      setCart([])
+      clearCart()
 
       // 刷新桌台列表，确保状态变为 idle
       await reloadTables()
@@ -402,7 +348,7 @@ export function POSInterface() {
   const handleClearOrder = async () => {
     const cleared = await clearOrder()
     if (cleared) {
-      setCart([])
+      clearCart()
       checkoutActions.resetCheckout()
     }
   }
@@ -671,118 +617,6 @@ export function POSInterface() {
         }}
       />
     )}
-    </>
-  )
-}
-
-interface PosReceiptPreviewProps {
-  data: CheckoutReceiptData
-  onClose: () => void
-  onPrint: () => void
-}
-
-function PosReceiptPreview({ data, onClose, onPrint }: PosReceiptPreviewProps) {
-  return (
-    <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background text-foreground p-4 print:static print:inset-auto print:p-0 print:bg-white print:text-black">
-        <Card className="w-full max-w-sm border-border shadow-lg print:w-[80mm] print:max-w-none print:shadow-none print:border-0 print:rounded-none print:mx-auto pos-receipt-card">
-          <div className="p-4 space-y-2 print:p-3">
-            <div className="text-center pos-receipt-section">
-              <h2 className="text-xl font-bold">
-                {data.mode === "aa" ? "AA 分单小票" : "结账小票"}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1">
-                桌台 {data.tableNumber} · 订单号 {data.orderId}
-              </p>
-            </div>
-            <Separator />
-            <div className="space-y-1 text-xs pos-receipt-section">
-              <div className="flex justify-between">
-                <span>时间</span>
-                <span>{data.paidAt}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>支付方式</span>
-                <span>{data.paymentMethod === "card" ? "刷卡" : "现金"}</span>
-              </div>
-            </div>
-            <Separator />
-            <div className="max-h-60 overflow-y-auto print:max-h-none print:overflow-visible pos-receipt-section">
-              {data.items.map((item) => (
-                <div
-                  key={item.name}
-                  className="flex justify-between text-xs py-1 print:break-inside-avoid"
-                  style={{ breakInside: "avoid" }}
-                >
-                  <div className="flex-1 pr-2">
-                    <div className="flex justify-between">
-                      <span className="truncate max-w-[8rem] print:whitespace-normal print:max-w-none">
-                        {item.name}
-                      </span>
-                      <span>x{item.quantity}</span>
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      单价 €{item.unitPrice.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="text-right text-xs font-medium">
-                    €{item.totalPrice.toFixed(2)}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Separator />
-            <div className="space-y-1 text-sm pos-receipt-section">
-              <div className="flex justify-between">
-                <span>小计</span>
-                <span>€{data.subtotal.toFixed(2)}</span>
-              </div>
-              {data.discountPercent > 0 && (
-                <div className="flex justify-between text-xs">
-                  <span>折扣 ({data.discountPercent}%)</span>
-                  <span>-€{data.discountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-semibold">
-                <span>应付金额</span>
-                <span>€{data.total.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span>实收</span>
-                <span>€{data.receivedAmount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span>找零</span>
-                <span>€{data.changeAmount.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="pt-2 flex justify-center gap-2 print:hidden">
-              <Button variant="outline" size="sm" onClick={onClose}>
-                返回 POS
-              </Button>
-              <Button size="sm" onClick={onPrint}>
-                重新打印
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
-      <style jsx global>{`
-        @page {
-          size: 80mm auto;
-          margin: 6mm;
-        }
-        @media print {
-          .pos-receipt-card {
-            width: 80mm !important;
-            max-width: none !important;
-          }
-          .pos-receipt-section {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-        }
-      `}</style>
     </>
   )
 }
