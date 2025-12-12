@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useMemo } from "react"
+import { useMenuItems } from "@/lib/queries"
 
 export interface UIMenuItem {
   id: string
@@ -20,62 +21,28 @@ export interface UICategory {
 }
 
 interface UseMenuDataOptions {
-  // 可选的降级回退数据（API 失败时使用）
   fallback?: { items: UIMenuItem[]; categories?: UICategory[] }
 }
 
 export function useMenuData(options: UseMenuDataOptions = {}) {
   const { fallback } = options
-  const [items, setItems] = useState<UIMenuItem[]>(fallback?.items ?? [])
-  const [categories, setCategories] = useState<UICategory[]>(
-    fallback?.categories ?? [{ id: "all", name: "全部" }],
-  )
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
 
-  const fallbackItems = fallback?.items
-  const fallbackCategories = fallback?.categories
+  const { data, isLoading: loading, error: queryError, refetch } = useMenuItems()
+  const error = queryError ? (queryError instanceof Error ? queryError.message : "加载失败") : null
 
-  useEffect(() => {
-    let aborted = false
-    const load = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        const res = await fetch("/api/menu-items", { cache: "no-store" })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = await res.json()
-        if (aborted) return
+  const items: UIMenuItem[] = useMemo(() => {
+    if (!data?.items) return fallback?.items ?? []
+    return data.items
+  }, [data, fallback])
 
-        const nextItems: UIMenuItem[] = Array.isArray(data?.items) ? data.items : []
-        const nextCategories: UICategory[] = Array.isArray(data?.categories)
-          ? data.categories
-          : [{ id: "all", name: "全部" }]
-
-        setItems(nextItems)
-        setCategories(nextCategories)
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "加载失败")
-        // 降级回退
-        if (fallbackItems?.length) {
-          setItems(fallbackItems)
-          if (fallbackCategories) setCategories(fallbackCategories)
-        }
-      } finally {
-        if (!aborted) setLoading(false)
-      }
-    }
-
-    load()
-    return () => {
-      aborted = true
-    }
-  }, [fallbackCategories, fallbackItems, reloadKey])
+  const categories: UICategory[] = useMemo(() => {
+    if (!data?.categories) return fallback?.categories ?? [{ id: "all", name: "全部" }]
+    return data.categories
+  }, [data, fallback])
 
   const refresh = useCallback(() => {
-    setReloadKey((key) => key + 1)
-  }, [])
+    refetch()
+  }, [refetch])
 
   return { items, categories, loading, error, refresh }
 }

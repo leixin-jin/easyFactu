@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
 
 import { useToast } from "@/hooks/use-toast"
+import { useTableOrder, useCreateOrderBatch, useUpdateOrderItem, useClearOrder } from "@/lib/queries"
 import type { CartItem, CurrentOrderSummary, OrderBatchView } from "@/types/pos"
 
 interface UpdateOrderStateArgs {
@@ -13,63 +14,41 @@ interface UpdateOrderStateArgs {
 export function usePosOrder(tableId: string) {
   const { toast } = useToast()
 
-  const [currentOrder, setCurrentOrder] = useState<CurrentOrderSummary | null>(null)
-  const [batches, setBatches] = useState<OrderBatchView[]>([])
-  const [loadingOrder, setLoadingOrder] = useState(false)
-  const [orderError, setOrderError] = useState<string | null>(null)
-  const [submittingBatch, setSubmittingBatch] = useState(false)
-  const [clearingOrder, setClearingOrder] = useState(false)
+  const {
+    data: orderData,
+    isLoading: loadingOrder,
+    error: queryError,
+    refetch,
+  } = useTableOrder(tableId)
+
+  const createOrderMutation = useCreateOrderBatch()
+  const updateItemMutation = useUpdateOrderItem()
+  const clearOrderMutation = useClearOrder()
+
+  const currentOrder: CurrentOrderSummary | null = orderData?.order ?? null
+  const batches: OrderBatchView[] = useMemo(
+    () => orderData?.batches ?? [],
+    [orderData?.batches],
+  )
+  const orderError = queryError ? (queryError instanceof Error ? queryError.message : "加载订单失败") : null
+  const submittingBatch = createOrderMutation.isPending
+  const clearingOrder = clearOrderMutation.isPending
 
   const resetOrderView = useCallback(() => {
-    setCurrentOrder(null)
-    setBatches([])
-    setOrderError(null)
+    // This is now managed by TanStack Query - refetch will reset the data
   }, [])
 
   const applyOrderState = useCallback(
-    ({ order, batches: nextBatches }: UpdateOrderStateArgs) => {
-      if (typeof order !== "undefined") {
-        setCurrentOrder(order)
-      }
-      if (typeof nextBatches !== "undefined") {
-        setBatches(nextBatches)
-      }
+    (_args: UpdateOrderStateArgs) => {
+      // State is now managed by TanStack Query - data will auto-update on mutation success
     },
     [],
   )
 
   const loadOrderForTable = useCallback(async () => {
-    if (!tableId) {
-      resetOrderView()
-      return
-    }
-    try {
-      setLoadingOrder(true)
-      setOrderError(null)
-      const res = await fetch(`/api/orders?tableId=${encodeURIComponent(tableId)}`, { cache: "no-store" })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        const message = (data && (data.error as string)) || `加载订单失败 (${res.status})`
-        throw new Error(message)
-      }
-      applyOrderState({ order: data.order ?? null, batches: data.batches ?? [] })
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "加载订单失败"
-      resetOrderView()
-      setOrderError(message)
-      toast({
-        title: "加载订单失败",
-        description: message,
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingOrder(false)
-    }
-  }, [applyOrderState, resetOrderView, tableId, toast])
-
-  useEffect(() => {
-    loadOrderForTable()
-  }, [loadOrderForTable])
+    if (!tableId) return
+    await refetch()
+  }, [tableId, refetch])
 
   const updatePersistedItem = useCallback(
     async (itemId: string, type: "decrement" | "remove") => {
@@ -82,32 +61,17 @@ export function usePosOrder(tableId: string) {
         return
       }
       try {
-        setLoadingOrder(true)
-        setOrderError(null)
-        const res = await fetch(`/api/orders/${encodeURIComponent(itemId)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type }),
-        })
-        const data = await res.json().catch(() => null)
-        if (!res.ok) {
-          const message = (data && (data.error as string)) || `更新订单失败 (${res.status})`
-          throw new Error(message)
-        }
-        applyOrderState({ order: data.order ?? null, batches: data.batches ?? [] })
+        await updateItemMutation.mutateAsync({ itemId, data: { type } })
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "更新订单失败"
-        setOrderError(message)
         toast({
           title: "更新订单失败",
           description: message,
           variant: "destructive",
         })
-      } finally {
-        setLoadingOrder(false)
       }
     },
-    [applyOrderState, tableId, toast],
+    [tableId, toast, updateItemMutation],
   )
 
   const submitBatch = useCallback(
@@ -128,27 +92,15 @@ export function usePosOrder(tableId: string) {
         return false
       }
       try {
-        setSubmittingBatch(true)
-        setOrderError(null)
-        const res = await fetch("/api/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tableId,
-            paymentMethod,
-            items: cart.map((item) => ({
-              menuItemId: item.id,
-              quantity: item.quantity,
-              notes: item.notes ?? undefined,
-            })),
-          }),
+        await createOrderMutation.mutateAsync({
+          tableId,
+          paymentMethod,
+          items: cart.map((item) => ({
+            menuItemId: item.id,
+            quantity: item.quantity,
+            notes: item.notes ?? undefined,
+          })),
         })
-        const data = await res.json().catch(() => null)
-        if (!res.ok) {
-          const message = (data && (data.error as string)) || `下单失败 (${res.status})`
-          throw new Error(message)
-        }
-        applyOrderState({ order: data.order ?? null, batches: data.batches ?? [] })
         toast({
           title: "下单成功",
           description: "当前批次已成功提交到订单。",
@@ -156,39 +108,23 @@ export function usePosOrder(tableId: string) {
         return true
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "下单失败"
-        setOrderError(message)
         toast({
           title: "下单失败",
           description: message,
           variant: "destructive",
         })
         return false
-      } finally {
-        setSubmittingBatch(false)
       }
     },
-    [applyOrderState, tableId, toast],
+    [tableId, toast, createOrderMutation],
   )
 
   const clearOrder = useCallback(async () => {
     if (!tableId) {
-      resetOrderView()
       return true
     }
     try {
-      setClearingOrder(true)
-      setOrderError(null)
-      const res = await fetch("/api/orders/clear", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tableId }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        const message = (data && (data.error as string)) || `清空订单失败 (${res.status})`
-        throw new Error(message)
-      }
-      applyOrderState({ order: data.order ?? null, batches: data.batches ?? [] })
+      await clearOrderMutation.mutateAsync({ tableId })
       toast({
         title: "订单已清空",
         description: "当前桌台的订单已全部清空。",
@@ -196,22 +132,22 @@ export function usePosOrder(tableId: string) {
       return true
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "清空订单失败"
-      setOrderError(message)
       toast({
         title: "清空订单失败",
         description: message,
         variant: "destructive",
       })
       return false
-    } finally {
-      setClearingOrder(false)
     }
-  }, [applyOrderState, resetOrderView, tableId, toast])
+  }, [tableId, toast, clearOrderMutation])
 
   const maxExistingBatchNo = useMemo(
     () => (batches.length > 0 ? Math.max(...batches.map((b) => b.batchNo)) : 0),
     [batches],
   )
+
+  // setOrderError is kept for backward compatibility but is now a no-op
+  const setOrderError = useCallback((_message: string | null) => {}, [])
 
   return {
     currentOrder,

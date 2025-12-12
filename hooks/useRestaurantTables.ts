@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
+import { useTables } from "@/lib/queries"
 
 export type TableStatus = "idle" | "occupied"
 
@@ -30,45 +31,25 @@ interface UseRestaurantTablesOptions {
 
 export function useRestaurantTables(options: UseRestaurantTablesOptions = {}) {
   const { fallback = [], filters } = options
-  const [tables, setTables] = useState<RestaurantTableView[]>(fallback)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  async function reload() {
-    try {
-      setLoading(true)
-      setError(null)
-      const res = await fetch("/api/restaurant-tables", { cache: "no-store" })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: Array<{
-        id: string
-        number: string
-        area?: string | null
-        capacity?: number | null
-        status: string
-        amount?: number | null
-      }> = await res.json()
-      const mapped: RestaurantTableView[] = data.map((r) => ({
-        id: String(r.id),
-        number: r.number,
-        area: r.area ?? null,
-        capacity: r.capacity ?? null,
-        status: (r.status as TableStatus) ?? "idle",
-        amount: typeof r.amount === "number" ? r.amount : r.amount ?? null,
-      }))
-      setTables(mapped)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "加载失败")
-      setTables(fallback)
-    } finally {
-      setLoading(false)
-    }
+  const { data, isLoading: loading, error: queryError, refetch } = useTables()
+  const error = queryError ? (queryError instanceof Error ? queryError.message : "加载失败") : null
+
+  const tables: RestaurantTableView[] = useMemo(() => {
+    if (!data) return fallback
+    return data.map((r) => ({
+      id: String(r.id),
+      number: r.number,
+      area: r.area ?? null,
+      capacity: r.capacity ?? null,
+      status: (r.status as TableStatus) ?? "idle",
+      amount: typeof r.amount === "number" ? r.amount : r.amount ?? null,
+    }))
+  }, [data, fallback])
+
+  const reload = async () => {
+    await refetch()
   }
-
-  useEffect(() => {
-    reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const areas = useMemo(
     () => ["all", ...Array.from(new Set(tables.map((t) => t.area || "").filter(Boolean)))],

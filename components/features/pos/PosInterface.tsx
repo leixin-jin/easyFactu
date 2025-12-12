@@ -13,10 +13,10 @@ import {
 } from "@/hooks/useRestaurantTables"
 import { useCheckout } from "@/hooks/useCheckout"
 import { usePosOrder } from "@/hooks/usePosOrder"
-import { PosMenuPane } from "@/components/PosMenuPane"
-import { PosOrderSidebar } from "@/components/PosOrderSidebar"
-import { PosCheckoutDialog } from "@/components/PosCheckoutDialog"
-import { SplitTableDialog, MergeTableDialog } from "@/components/TableTransferDialogs"
+import { PosMenuPane } from "./PosMenuPane"
+import { PosOrderSidebar } from "./PosOrderSidebar"
+import { PosCheckoutDialog } from "./PosCheckoutDialog"
+import { SplitTableDialog, MergeTableDialog } from "./TableTransferDialogs"
 import type {
   CartItem,
   CheckoutReceiptData,
