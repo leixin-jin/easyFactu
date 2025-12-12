@@ -1,0 +1,82 @@
+import { fetcher } from "./fetcher"
+import type {
+  TableResponse,
+  CreateTableInput,
+  MenuListResponse,
+  MenuItemResponse,
+  CreateMenuItemInput,
+  OrderResponse,
+  CreateOrderInput,
+  CheckoutInput,
+  CheckoutResponse,
+  ClearOrderInput,
+  UpdateOrderItemInput,
+  TransferOrderInput,
+} from "@/types/api"
+
+export const api = {
+  tables: {
+    list: () => fetcher<TableResponse[]>("/api/restaurant-tables"),
+
+    create: (data: CreateTableInput) =>
+      fetcher<TableResponse>("/api/restaurant-tables", {
+        method: "POST",
+        body: data,
+      }),
+
+    delete: (id: string) =>
+      fetcher<void>(`/api/restaurant-tables/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
+  },
+
+  menuItems: {
+    list: () => fetcher<MenuListResponse>("/api/menu-items"),
+
+    create: (data: CreateMenuItemInput) =>
+      fetcher<MenuItemResponse>("/api/menu-items", {
+        method: "POST",
+        body: data,
+      }),
+
+    delete: (id: string) =>
+      fetcher<void>(`/api/menu-items/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
+  },
+
+  orders: {
+    get: (tableId: string) =>
+      fetcher<OrderResponse>(`/api/orders?tableId=${encodeURIComponent(tableId)}`),
+
+    create: (data: CreateOrderInput) =>
+      fetcher<OrderResponse>("/api/orders", {
+        method: "POST",
+        body: data,
+      }),
+
+    updateItem: (itemId: string, data: UpdateOrderItemInput) =>
+      fetcher<OrderResponse>(`/api/orders/${encodeURIComponent(itemId)}`, {
+        method: "PATCH",
+        body: data,
+      }),
+
+    clear: (data: ClearOrderInput) =>
+      fetcher<OrderResponse>("/api/orders/clear", {
+        method: "POST",
+        body: data,
+      }),
+
+    checkout: (data: CheckoutInput) =>
+      fetcher<CheckoutResponse>("/api/orders/checkout", {
+        method: "POST",
+        body: data,
+      }),
+
+    transfer: (data: TransferOrderInput) =>
+      fetcher<OrderResponse>("/api/orders/transfer", {
+        method: "POST",
+        body: data,
+      }),
+  },
+}

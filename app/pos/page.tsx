@@ -1,6 +1,7 @@
 import { Suspense } from "react"
+
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { POSInterface } from "@/components/pos-interface"
+import { POSInterface } from "@/components/features/pos"
 
 export default function POSPage() {
   return (

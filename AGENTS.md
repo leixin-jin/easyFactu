@@ -2,9 +2,21 @@
 
 ## Project Structure & Module Organization
 - `app/` — Next.js App Router pages (`page.tsx`, `layout.tsx`).
-- `components/` — 复用型 React 组件（PascalCase）；`components/ui/` 为基础 UI。
+- `components/` — 复用型 React 组件（PascalCase）：
+  - `components/features/` — 功能模块组件：
+    - `pos/` — POS 点单相关（PosInterface, PosMenuPane, PosOrderSidebar, PosCheckoutDialog, PosReceiptPreview）
+    - `tables/` — 桌台管理（TableManagement, SplitTableDialog, MergeTableDialog）
+    - `menu/` — 菜单管理（MenuManagement）
+    - `finance/` — 财务管理（FinanceManagement, ExpenseDialog, 等）
+  - `components/shared/` — 跨模块共享组件
+  - `components/ui/` — 基础 UI 组件（shadcn/ui）
+  - `components/providers/` — React Context Providers（QueryProvider 等）
 - `db/schema.ts` — Drizzle ORM schema 源；`drizzle/` 生成的迁移与快照。
-- `lib/`, `hooks/` — 工具方法与自定义 hooks。
+- `lib/` — 工具方法：
+  - `lib/api/` — 统一 API 客户端（fetcher.ts, client.ts）
+  - `lib/queries/` — TanStack Query hooks（use-tables.ts, use-menu.ts, use-orders.ts）
+- `hooks/` — 自定义 React hooks（保持兼容层）
+- `types/` — TypeScript 类型定义（api.ts, database.ts, pos.ts）
 - `public/` — 静态资源；`seed/` — Supabase 导入用 CSV。
 
 ## Build, Test, and Development Commands
@@ -33,6 +45,30 @@
 - 环境变量：`.env.local`（不入库）。必需项：`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL`。
 - 处理输入时遵循边界优先：校验/空值/超时与重试；勿提交任何密钥。
 
+## TanStack Query 使用指南
+- QueryProvider 已在 `app/layout.tsx` 中集成。
+- 数据查询使用 `lib/queries/` 中的 hooks：
+  ```typescript
+  import { useTablesQuery, useCreateTable } from "@/lib/queries"
+  
+  // 获取桌台列表
+  const { data, isLoading, error } = useTablesQuery()
+  
+  // 创建桌台
+  const createMutation = useCreateTable()
+  await createMutation.mutateAsync({ number: "A1", capacity: 4 })
+  ```
+- API 客户端使用 `lib/api/client.ts`：
+  ```typescript
+  import { api } from "@/lib/api"
+  
+  // 直接调用 API
+  const tables = await api.tables.list()
+  const order = await api.orders.get(tableId)
+  ```
+- 缓存配置：菜单数据 5 分钟，桌台 30 秒，订单实时。
+
 ## Agent Notes
-- 组件复用优先放入 `components/` 以避免页面冗余。
+- 组件复用优先放入 `components/features/` 对应模块或 `components/shared/`。
+- 新增功能模块时在 `components/features/` 下创建目录并添加 `index.ts` 导出。
 - 保持 KISS/DRY/YAGNI，提交前可运行 `pnpm lint`/`pnpm build` 做最小验证。
