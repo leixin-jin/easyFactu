@@ -33,9 +33,16 @@
 - UI 样式使用 Tailwind；print 媒体样式需确保不影响屏幕端 UI。
 
 ## Testing Guidelines
-- 当前未配置测试框架；如新增，优先 Vitest + React Testing Library。
-- 测试文件同目录放置，命名 `*.test.ts[x]`；保持快速、确定性。
-- 新增测试时同步在 `package.json` 增加 `test` 脚本并记录运行方式。
+- 测试框架：Vitest + React Testing Library + MSW
+- 测试命令：
+  - `pnpm test` — 运行测试（监听模式）
+  - `pnpm test:run` — 单次运行所有测试
+  - `pnpm test:coverage` — 生成覆盖率报告
+  - `pnpm test:watch` — 监听模式
+- 测试文件位置：`__tests__/` 目录下，命名 `*.test.ts[x]`
+- Mock 数据：`__tests__/mocks/` 目录
+- 覆盖率要求：核心模块 (`lib/money.ts`, `lib/order-utils.ts`, `hooks/useCheckout.ts`) > 60%
+- 详细指南：`doc/testing.md`
 
 ## Commit & Pull Request Guidelines
 - 使用 Conventional Commits：`feat:`, `fix:`, `chore:`, `refactor:`, `docs:`, `ci:` 等；主题 ≤72 字符，可带 scope（如 `feat(db): add orders index`）。
@@ -71,4 +78,5 @@
 ## Agent Notes
 - 组件复用优先放入 `components/features/` 对应模块或 `components/shared/`。
 - 新增功能模块时在 `components/features/` 下创建目录并添加 `index.ts` 导出。
-- 保持 KISS/DRY/YAGNI，提交前可运行 `pnpm lint`/`pnpm build` 做最小验证。
+- 保持 KISS/DRY/YAGNI，提交前可运行 `pnpm lint`/`pnpm test:run`/`pnpm build` 做最小验证。
+- 新增业务逻辑需同步编写单元测试。
