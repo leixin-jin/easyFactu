@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { Minus, Plus } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { ChevronDown, ChevronUp, Minus, Plus } from "lucide-react"
 
 import {
   Dialog,
@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import type { OrderBatchView } from "@/types/pos"
@@ -25,18 +24,32 @@ interface TransferableItem {
   quantity: number
   price: number
   batchNo: number
+  createdAt: string
 }
 
 function toTransferableItems(batches: OrderBatchView[]): TransferableItem[] {
-  return batches.flatMap((batch) =>
-    batch.items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      quantity: item.quantity,
-      price: item.price,
-      batchNo: batch.batchNo,
-    })),
+  const items = batches.flatMap((batch) =>
+    batch.items
+      .filter((item) => item.quantity > 0)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        batchNo: batch.batchNo,
+        createdAt: item.createdAt,
+      })),
   )
+
+  const parseTime = (value: string) => {
+    const time = new Date(value).getTime()
+    return Number.isNaN(time) ? 0 : time
+  }
+
+  return items.sort((a, b) => {
+    if (a.batchNo !== b.batchNo) return a.batchNo - b.batchNo
+    return parseTime(a.createdAt) - parseTime(b.createdAt)
+  })
 }
 
 interface ItemSelectorProps {
@@ -47,38 +60,64 @@ interface ItemSelectorProps {
 }
 
 function ItemSelector({ items, selected, onChange, disabled }: ItemSelectorProps) {
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const [scrollState, setScrollState] = useState({ canScrollUp: false, canScrollDown: false })
+
+  const updateScrollState = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    const { scrollTop, scrollHeight, clientHeight } = el
+    setScrollState({
+      canScrollUp: scrollTop > 4,
+      canScrollDown: scrollTop + clientHeight < scrollHeight - 4,
+    })
+  }, [])
+
+  useEffect(() => {
+    updateScrollState()
+  }, [items, updateScrollState])
+
+  const scrollBy = (delta: number) => {
+    const el = listRef.current
+    if (!el) return
+    el.scrollBy({ top: delta, behavior: "smooth" })
+  }
+
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">当前没有可操作的菜品</p>
   }
 
   return (
-    <div className="space-y-2">
-      <ScrollArea className="max-h-64 pr-2">
-        <div className="space-y-3">
-          {items.map((item) => {
-            const value = selected[item.id] ?? 0
-            const max = item.quantity
-            return (
-              <div key={item.id} className="rounded-md border border-border p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="font-medium text-sm text-foreground">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      第 {item.batchNo} 批 · 可拆 {item.quantity} 份 · 单价 €{item.price.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-8 w-8"
-                      disabled={disabled || value <= 0}
-                      onClick={() => onChange(item.id, Math.max(0, value - 1))}
-                    >
-                      <Minus className="w-4 h-4" />
-                    </Button>
-                    <Input
-                      type="number"
+    <div className="relative space-y-2">
+      <div
+        ref={listRef}
+        onScroll={updateScrollState}
+        className="max-h-72 space-y-3 overflow-y-auto pr-10"
+      >
+        {items.map((item) => {
+          const value = selected[item.id] ?? 0
+          const max = item.quantity
+          return (
+            <div key={item.id} className="rounded-md border border-border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="font-medium text-sm text-foreground">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    第 {item.batchNo} 批 · 可拆 {item.quantity} 份 · 单价 €{item.price.toFixed(2)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    disabled={disabled || value <= 0}
+                    onClick={() => onChange(item.id, Math.max(0, value - 1))}
+                  >
+                    <Minus className="w-4 h-4" />
+                  </Button>
+                  <Input
+                    type="number"
                     value={value > 0 ? value : ""}
                     min={0}
                     max={max}
@@ -94,22 +133,58 @@ function ItemSelector({ items, selected, onChange, disabled }: ItemSelectorProps
                     }}
                     className="w-16 text-center"
                   />
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-8 w-8"
-                      disabled={disabled || value >= max}
-                      onClick={() => onChange(item.id, Math.min(max, value + 1))}
-                    >
-                      <Plus className="w-4 h-4" />
-                    </Button>
-                  </div>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    disabled={disabled || value >= max}
+                    onClick={() => onChange(item.id, Math.min(max, value + 1))}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
-            )
-          })}
+            </div>
+          )
+        })}
+      </div>
+
+      {(scrollState.canScrollUp || scrollState.canScrollDown) && (
+        <div className="pointer-events-none absolute inset-y-0 right-1 flex flex-col justify-between py-3">
+          {scrollState.canScrollUp ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="pointer-events-auto h-8 w-8 rounded-full shadow-sm"
+              onClick={() => scrollBy(-160)}
+              disabled={disabled}
+              aria-label="向上滚动菜品列表"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+          ) : (
+            <span />
+          )}
+          {scrollState.canScrollDown && (
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="pointer-events-auto h-8 w-8 rounded-full shadow-sm"
+              onClick={() => scrollBy(160)}
+              disabled={disabled}
+              aria-label="向下滚动菜品列表"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          )}
         </div>
-      </ScrollArea>
+      )}
+
+      {items.length > 6 && (
+        <p className="text-xs text-muted-foreground">列表支持上下滚动查看更多菜品</p>
+      )}
     </div>
   )
 }
@@ -137,6 +212,13 @@ export function SplitTableDialog({
 }: SplitTableDialogProps) {
   const { toast } = useToast()
   const items = useMemo(() => toTransferableItems(batches), [batches])
+  const targetOptions = useMemo(
+    () =>
+      tables
+        .filter((t) => t.id !== sourceTableId)
+        .sort((a, b) => a.number.localeCompare(b.number, "zh-CN")),
+    [sourceTableId, tables],
+  )
   const [targetTableId, setTargetTableId] = useState("")
   const [selected, setSelected] = useState<Record<string, number>>({})
 
@@ -156,6 +238,29 @@ export function SplitTableDialog({
     }
     setSelected(next)
   }
+
+  useEffect(() => {
+    setSelected((prev) => {
+      if (Object.keys(prev).length === 0) return prev
+      const next: Record<string, number> = {}
+      let changed = false
+      for (const item of items) {
+        const prevValue = prev[item.id]
+        if (prevValue == null) continue
+        const clamped = Math.min(prevValue, item.quantity)
+        if (clamped > 0) {
+          next[item.id] = clamped
+        }
+        if (clamped !== prevValue) {
+          changed = true
+        }
+      }
+      if (changed || Object.keys(next).length !== Object.keys(prev).length) {
+        return next
+      }
+      return prev
+    })
+  }, [items])
 
   const selectAll = () => {
     const next: Record<string, number> = {}
@@ -233,13 +338,11 @@ export function SplitTableDialog({
                 <SelectValue placeholder="选择目标桌台" />
               </SelectTrigger>
               <SelectContent>
-                {tables
-                  .filter((t) => t.id !== sourceTableId)
-                  .map((table) => (
-                    <SelectItem key={table.id} value={table.id}>
-                      {table.number}
-                    </SelectItem>
-                  ))}
+                {targetOptions.map((table) => (
+                  <SelectItem key={table.id} value={table.id}>
+                    {table.number}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -291,6 +394,13 @@ export function MergeTableDialog({
   const [loadingItems, setLoadingItems] = useState(false)
   const [batches, setBatches] = useState<OrderBatchView[]>([])
   const items = useMemo(() => toTransferableItems(batches), [batches])
+  const sourceOptions = useMemo(
+    () =>
+      tables
+        .filter((t) => t.id !== targetTableId)
+        .sort((a, b) => a.number.localeCompare(b.number, "zh-CN")),
+    [tables, targetTableId],
+  )
   const [selected, setSelected] = useState<Record<string, number>>({})
 
   useEffect(() => {
@@ -310,6 +420,29 @@ export function MergeTableDialog({
     }
     setSelected(next)
   }
+
+  useEffect(() => {
+    setSelected((prev) => {
+      if (Object.keys(prev).length === 0) return prev
+      const next: Record<string, number> = {}
+      let changed = false
+      for (const item of items) {
+        const prevValue = prev[item.id]
+        if (prevValue == null) continue
+        const clamped = Math.min(prevValue, item.quantity)
+        if (clamped > 0) {
+          next[item.id] = clamped
+        }
+        if (clamped !== prevValue) {
+          changed = true
+        }
+      }
+      if (changed || Object.keys(next).length !== Object.keys(prev).length) {
+        return next
+      }
+      return prev
+    })
+  }, [items])
 
   const fetchOrderItems = async (tableId: string) => {
     if (!tableId) {
@@ -425,13 +558,11 @@ export function MergeTableDialog({
                 <SelectValue placeholder="选择来源桌台" />
               </SelectTrigger>
               <SelectContent>
-                {tables
-                  .filter((t) => t.id !== targetTableId)
-                  .map((table) => (
-                    <SelectItem key={table.id} value={table.id}>
-                      {table.number}
-                    </SelectItem>
-                  ))}
+                {sourceOptions.map((table) => (
+                  <SelectItem key={table.id} value={table.id}>
+                    {table.number}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
