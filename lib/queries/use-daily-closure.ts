@@ -11,13 +11,13 @@ import type {
 
 export const dailyClosureKeys = {
   all: ["dailyClosure"] as const,
-  byDate: (date: string) => [...dailyClosureKeys.all, date] as const,
+  current: () => [...dailyClosureKeys.all, "current"] as const,
 }
 
-export function useDailyClosureQuery(date: string) {
+export function useDailyClosureQuery() {
   return useQuery({
-    queryKey: dailyClosureKeys.byDate(date),
-    queryFn: () => api.dailyClosure.get(date),
+    queryKey: dailyClosureKeys.current(),
+    queryFn: () => api.dailyClosure.get(),
     staleTime: 0,
     refetchOnMount: true,
   })
@@ -28,8 +28,9 @@ export function useConfirmDailyClosure() {
 
   return useMutation({
     mutationFn: (data: ConfirmDailyClosureInput) => api.dailyClosures.confirm(data),
-    onSuccess: (data: DailyClosureResponse) => {
-      queryClient.invalidateQueries({ queryKey: dailyClosureKeys.byDate(data.businessDate) })
+    onSuccess: () => {
+      // 刷新当前预览（生成报告后开启新区间）
+      queryClient.invalidateQueries({ queryKey: dailyClosureKeys.current() })
     },
   })
 }
@@ -41,15 +42,12 @@ export function useCreateDailyClosureAdjustment() {
     mutationFn: ({
       closureId,
       data,
-      businessDate,
     }: {
       closureId: string
       data: CreateDailyClosureAdjustmentInput
-      businessDate: string
     }) => api.dailyClosures.createAdjustment(closureId, data),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: dailyClosureKeys.byDate(variables.businessDate) })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: dailyClosureKeys.current() })
     },
   })
 }
-

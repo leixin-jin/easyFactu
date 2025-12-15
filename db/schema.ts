@@ -132,6 +132,7 @@ export const transactions = pgTable(
   (t) => ({
     typeIdx: index("transactions_type_idx").on(t.type),
     dateIdx: index("transactions_date_idx").on(t.date),
+    createdAtIdx: index("transactions_created_at_idx").on(t.createdAt),
   }),
 );
 
@@ -139,7 +140,10 @@ export const dailyClosures = pgTable(
   "daily_closures",
   {
     id: uuid("id").default(sql`gen_random_uuid()`).primaryKey().notNull(),
-    businessDate: date("business_date").notNull(),
+    businessDate: date("business_date"), // 保留但不再是唯一约束，允许同日多条记录
+    sequenceNo: integer("sequence_no").notNull(), // 按用户点击顺序递增
+    periodStartAt: timestamp("period_start_at", { withTimezone: false }).notNull(), // 统计区间起点
+    periodEndAt: timestamp("period_end_at", { withTimezone: false }).notNull(), // 统计区间终点=生成时刻
     taxRate: numeric("tax_rate", { precision: 5, scale: 4 })
       .notNull()
       .default("0.1000"),
@@ -162,10 +166,21 @@ export const dailyClosures = pgTable(
       .notNull(),
   },
   (t) => ({
-    businessDateUniq: uniqueIndex("daily_closures_business_date_uniq").on(
-      t.businessDate,
-    ),
+    sequenceNoUniq: uniqueIndex("daily_closures_sequence_no_uniq").on(t.sequenceNo),
+    periodStartIdx: index("daily_closures_period_start_at_idx").on(t.periodStartAt),
+    periodEndIdx: index("daily_closures_period_end_at_idx").on(t.periodEndAt),
   }),
+);
+
+// 日结状态表 - 单行表，用于管理当前统计区间和序号
+export const dailyClosureState = pgTable(
+  "daily_closure_state",
+  {
+    id: integer("id").primaryKey().default(1), // 固定主键，只有一行
+    currentPeriodStartAt: timestamp("current_period_start_at", { withTimezone: false }).notNull(),
+    nextSequenceNo: integer("next_sequence_no").notNull().default(1),
+    updatedAt: timestamp("updated_at", { withTimezone: false }).defaultNow().notNull(),
+  },
 );
 
 export const dailyClosureAdjustments = pgTable(
@@ -252,6 +267,7 @@ export const schema = {
   orderStatus,
   transactionType,
   dailyClosures,
+  dailyClosureState,
   dailyClosureAdjustments,
   dailyClosurePaymentLines,
   dailyClosureItemLines,
@@ -277,3 +293,5 @@ export type DailyClosurePaymentLine = typeof dailyClosurePaymentLines.$inferSele
 export type NewDailyClosurePaymentLine = typeof dailyClosurePaymentLines.$inferInsert;
 export type DailyClosureItemLine = typeof dailyClosureItemLines.$inferSelect;
 export type NewDailyClosureItemLine = typeof dailyClosureItemLines.$inferInsert;
+export type DailyClosureStateRow = typeof dailyClosureState.$inferSelect;
+export type NewDailyClosureStateRow = typeof dailyClosureState.$inferInsert;

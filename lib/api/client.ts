@@ -20,10 +20,8 @@ import type {
 
 export const api = {
   dailyClosure: {
-    get: (date?: string) =>
-      fetcher<DailyClosureResponse>(
-        date ? `/api/daily-closure?date=${encodeURIComponent(date)}` : "/api/daily-closure",
-      ),
+    get: () =>
+      fetcher<DailyClosureResponse>("/api/daily-closure"),
   },
 
   dailyClosures: {

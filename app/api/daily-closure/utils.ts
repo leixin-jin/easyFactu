@@ -1,10 +1,11 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, gte, lt, sql } from "drizzle-orm"
 
 import {
   dailyClosureAdjustments,
   dailyClosureItemLines,
   dailyClosurePaymentLines,
   dailyClosures,
+  dailyClosureState,
   menuItems,
   orderItems,
   orders,
@@ -199,6 +200,219 @@ export async function computeDailyClosureSnapshot(
     overview,
     paymentLines,
     items,
+  }
+}
+
+/**
+ * 按时间区间 [periodStartAt, periodEndAt) 计算日结快照
+ * 收入/支付聚合：基于 transactions.createdAt
+ * 订单/菜品明细：基于 orders.closedAt
+ */
+export async function computeClosureSnapshotByRange(
+  db: {
+    select: (...args: any[]) => any
+  },
+  periodStartAt: Date,
+  periodEndAt: Date,
+  taxRate: number,
+): Promise<{
+  overview: DailyClosureOverview
+  paymentLines: DailyClosurePaymentLineInput[]
+  items: DailyClosureItems
+}> {
+  // 按时间区间筛选收入交易
+  const incomeRows = await db
+    .select({
+      paymentMethod: transactions.paymentMethod,
+      amount: transactions.amount,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.type, "income"),
+        gte(transactions.createdAt, periodStartAt),
+        lt(transactions.createdAt, periodEndAt)
+      )
+    )
+
+  const incomeTransactions: Array<{ paymentMethod: string; amount: number }> = incomeRows.map(
+    (row: any) => ({
+      paymentMethod: row.paymentMethod,
+      amount: parseMoney(row.amount),
+    }),
+  )
+
+  const paymentLines = aggregateIncomeByPaymentMethod(incomeTransactions)
+  const grossRevenue = incomeTransactions.reduce((sum, t) => sum + t.amount, 0)
+
+  // 按时间区间统计订单数
+  const [ordersCountRow] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.status, "paid"),
+        gte(orders.closedAt, periodStartAt),
+        lt(orders.closedAt, periodEndAt)
+      )
+    )
+
+  const ordersCount = Math.max(0, Math.trunc(safeNumber(ordersCountRow?.count)))
+
+  // 按时间区间查询订单菜品明细
+  const rawRows = await db
+    .select({
+      orderId: orders.id,
+      orderDiscount: orders.discount,
+      menuItemId: menuItems.id,
+      name: menuItems.name,
+      category: menuItems.category,
+      quantity: orderItems.quantity,
+      price: orderItems.price,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .innerJoin(menuItems, eq(orderItems.menuItemId, menuItems.id))
+    .where(
+      and(
+        eq(orders.status, "paid"),
+        gte(orders.closedAt, periodStartAt),
+        lt(orders.closedAt, periodEndAt)
+      )
+    )
+
+  const perOrder = new Map<
+    string,
+    {
+      discountAmount: number
+      items: Array<{
+        menuItemId: string
+        name: string
+        category: string
+        quantity: number
+        subtotal: number
+      }>
+    }
+  >()
+
+  for (const row of rawRows as any[]) {
+    const orderId = row.orderId as string
+    const entry = perOrder.get(orderId) ?? {
+      discountAmount: parseMoney(row.orderDiscount),
+      items: [],
+    }
+
+    const quantity = Math.max(0, Math.trunc(row.quantity ?? 0))
+    const price = parseMoney(row.price)
+    const subtotal = price * quantity
+
+    entry.items.push({
+      menuItemId: row.menuItemId,
+      name: row.name,
+      category: row.category,
+      quantity,
+      subtotal,
+    })
+
+    perOrder.set(orderId, entry)
+  }
+
+  const totals = new Map<
+    string,
+    {
+      menuItemId: string
+      name: string
+      category: string
+      quantitySold: number
+      revenueAmount: number
+      discountImpactAmount: number
+    }
+  >()
+
+  for (const order of perOrder.values()) {
+    const orderSubtotal = order.items.reduce((sum, item) => sum + item.subtotal, 0)
+    const discountAmount = orderSubtotal > 0 ? order.discountAmount : 0
+
+    for (const item of order.items) {
+      const ratio = orderSubtotal > 0 ? item.subtotal / orderSubtotal : 0
+      const allocatedDiscount = discountAmount * ratio
+      const revenue = item.subtotal - allocatedDiscount
+
+      const existing = totals.get(item.menuItemId) ?? {
+        menuItemId: item.menuItemId,
+        name: item.name,
+        category: item.category,
+        quantitySold: 0,
+        revenueAmount: 0,
+        discountImpactAmount: 0,
+      }
+
+      existing.quantitySold += item.quantity
+      existing.revenueAmount += revenue
+      existing.discountImpactAmount += allocatedDiscount
+      totals.set(item.menuItemId, existing)
+    }
+  }
+
+  const items = buildDailyClosureItems(
+    Array.from(totals.values()).map((line) => ({
+      menuItemId: line.menuItemId,
+      name: line.name,
+      category: line.category,
+      quantitySold: line.quantitySold,
+      revenueAmount: line.revenueAmount,
+      discountImpactAmount: line.discountImpactAmount,
+    })),
+  )
+
+  const overview = calculateDailyClosureOverview({
+    grossRevenue,
+    ordersCount,
+    taxRate,
+    refundAmount: 0,
+    voidAmount: 0,
+  })
+
+  return {
+    overview,
+    paymentLines,
+    items,
+  }
+}
+
+/**
+ * 获取或初始化日结状态
+ */
+export async function getOrInitDailyClosureState(
+  db: {
+    select: (...args: any[]) => any
+    insert: (...args: any[]) => any
+  },
+): Promise<{ currentPeriodStartAt: Date; nextSequenceNo: number }> {
+  const [state] = await db
+    .select()
+    .from(dailyClosureState)
+    .where(eq(dailyClosureState.id, 1))
+    .limit(1)
+
+  if (state) {
+    return {
+      currentPeriodStartAt: state.currentPeriodStartAt,
+      nextSequenceNo: state.nextSequenceNo,
+    }
+  }
+
+  // 初始化状态：起点为当前时刻
+  const now = new Date()
+  await db.insert(dailyClosureState).values({
+    id: 1,
+    currentPeriodStartAt: now,
+    nextSequenceNo: 1,
+  })
+
+  return {
+    currentPeriodStartAt: now,
+    nextSequenceNo: 1,
   }
 }
 

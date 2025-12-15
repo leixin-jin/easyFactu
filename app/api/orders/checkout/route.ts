@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import { getDb } from "@/lib/db";
 import {
-  dailyClosures,
   menuItems,
   orderItems,
   orders,
@@ -101,26 +100,7 @@ export async function POST(req: NextRequest) {
     const db = getDb();
 
     const result = await db.transaction(async (tx) => {
-      const businessDate = new Date().toISOString().slice(0, 10);
-      const [lockedClosure] = await tx
-        .select({ id: dailyClosures.id })
-        .from(dailyClosures)
-        .where(eq(dailyClosures.businessDate, businessDate))
-        .limit(1);
-
-      if (lockedClosure) {
-        return NextResponse.json(
-          {
-            error: "Daily closure is locked for this date",
-            code: "DAILY_CLOSURE_LOCKED",
-            detail: {
-              businessDate,
-              closureId: lockedClosure.id,
-            },
-          },
-          { status: 409 },
-        );
-      }
+      // 移除了日锁定检查 - 现在使用按点击顺序生成报告的模式，不再锁定当日结账
 
       const [table] = await tx
         .select({

@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { useToast } from "@/components/ui/use-toast"
 
 function formatEuro(value: number) {
   return `€${formatMoney(value)}`
@@ -54,12 +55,11 @@ function labelPaymentGroup(group: string) {
 }
 
 function DailyClosureAdjustmentDialog(props: {
-  businessDate: string
   closureId: string
   paymentMethods: string[]
   disabled?: boolean
 }) {
-  const { businessDate, closureId, paymentMethods, disabled } = props
+  const { closureId, paymentMethods, disabled } = props
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<DailyClosureAdjustmentType>("fee")
   const [amount, setAmount] = useState("")
@@ -79,7 +79,6 @@ function DailyClosureAdjustmentDialog(props: {
 
     await createAdjustment.mutateAsync({
       closureId,
-      businessDate,
       data: {
         type,
         amount: Number(amount),
@@ -182,13 +181,13 @@ function DailyClosureAdjustmentDialog(props: {
 }
 
 export function DailyClosureManagement() {
-  const businessDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const [activeTab, setActiveTab] = useState("overview")
   const [taxView, setTaxView] = useState<"gross" | "net">("gross")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<"revenue" | "quantity">("revenue")
+  const { toast } = useToast()
 
-  const query = useDailyClosureQuery(businessDate)
+  const query = useDailyClosureQuery()
   const confirm = useConfirmDailyClosure()
 
   const data = query.data
@@ -232,7 +231,33 @@ export function DailyClosureManagement() {
   }, [categoryFilter, data?.items.lines, sortBy])
 
   const handleConfirm = async () => {
-    await confirm.mutateAsync({ date: businessDate })
+    try {
+      const result = await confirm.mutateAsync({})
+      toast({
+        title: "日结确认成功",
+        description: `已生成第 ${result.sequenceNo} 份日结报告`,
+      })
+    } catch (err) {
+      toast({
+        title: "日结确认失败",
+        description: err instanceof Error ? err.message : "未知错误",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // 格式化时间显示
+  const formatPeriod = (start: string | undefined, end: string | undefined) => {
+    if (!start || !end) return "-"
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+    const formatTime = (d: Date) => d.toLocaleString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    })
+    return `${formatTime(startDate)} - ${formatTime(endDate)}`
   }
 
   return (
@@ -243,16 +268,17 @@ export function DailyClosureManagement() {
       </div>
 
       <Card className="p-4 bg-card border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary">{businessDate}</Badge>
-          {data?.locked ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="secondary">
+            {formatPeriod(data?.periodStartAt, data?.periodEndAt)}
+          </Badge>
+          {data?.lastReportSequenceNo ? (
             <Badge className="gap-1">
-              <Lock className="w-3 h-3" />
-              已锁账
+              已生成 {data.lastReportSequenceNo} 份报告
             </Badge>
           ) : (
             <Badge variant="outline" className="bg-transparent">
-              未锁账
+              尚未生成报告
             </Badge>
           )}
         </div>
@@ -266,7 +292,7 @@ export function DailyClosureManagement() {
             <RefreshCw className="w-4 h-4" />
             刷新
           </Button>
-          {data?.locked && data.closureId ? (
+          {data?.closureId && (
             <>
               <Button
                 asChild
@@ -289,16 +315,15 @@ export function DailyClosureManagement() {
                 </a>
               </Button>
             </>
-          ) : (
-            <Button
-              className="gap-2"
-              onClick={handleConfirm}
-              disabled={confirm.isPending || query.isLoading}
-            >
-              <Lock className="w-4 h-4" />
-              日结确认
-            </Button>
           )}
+          <Button
+            className="gap-2"
+            onClick={handleConfirm}
+            disabled={confirm.isPending || query.isLoading}
+          >
+            <Lock className="w-4 h-4" />
+            日结确认
+          </Button>
         </div>
       </Card>
 
@@ -431,15 +456,13 @@ export function DailyClosureManagement() {
                   <h2 className="text-lg font-semibold text-foreground">按支付方式明细</h2>
                   <Badge variant="secondary">{data?.payments.lines.length ?? 0} 项</Badge>
                 </div>
-                {data?.locked && data.closureId ? (
+                {data?.closureId ? (
                   <DailyClosureAdjustmentDialog
-                    businessDate={businessDate}
                     closureId={data.closureId}
                     paymentMethods={paymentMethods}
                   />
                 ) : (
                   <DailyClosureAdjustmentDialog
-                    businessDate={businessDate}
                     closureId={""}
                     paymentMethods={[]}
                     disabled
@@ -584,29 +607,33 @@ export function DailyClosureManagement() {
             <Card className="p-6 bg-card border-border">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="space-y-1">
-                  <h2 className="text-lg font-semibold text-foreground">锁账状态</h2>
+                  <h2 className="text-lg font-semibold text-foreground">报告与导出</h2>
                   <p className="text-sm text-muted-foreground">
-                    确认后生成不可随意改的日结快照；仍可通过“补录差额”追加说明记录
+                    点击日结确认生成报告快照；可连续生成多份报告，仍可通过"补录差额"追加说明记录
                   </p>
                 </div>
-                {!data?.locked ? (
-                  <Button className="gap-2" onClick={handleConfirm} disabled={confirm.isPending}>
-                    <Lock className="w-4 h-4" />
-                    日结确认
-                  </Button>
-                ) : null}
+                <Button className="gap-2" onClick={handleConfirm} disabled={confirm.isPending}>
+                  <Lock className="w-4 h-4" />
+                  日结确认
+                </Button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
                 <Card className="p-4 bg-muted/30 border-border">
-                  <p className="text-xs text-muted-foreground">锁账时间</p>
+                  <p className="text-xs text-muted-foreground">当前区间</p>
                   <p className="text-sm font-medium text-foreground mt-1">
-                    {data?.lockedAt ?? "-"}
+                    {formatPeriod(data?.periodStartAt, data?.periodEndAt)}
                   </p>
                 </Card>
                 <Card className="p-4 bg-muted/30 border-border">
-                  <p className="text-xs text-muted-foreground">日结单号</p>
+                  <p className="text-xs text-muted-foreground">已生成报告数</p>
                   <p className="text-sm font-medium text-foreground mt-1">
+                    {data?.lastReportSequenceNo ?? 0} 份
+                  </p>
+                </Card>
+                <Card className="p-4 bg-muted/30 border-border">
+                  <p className="text-xs text-muted-foreground">最近报告ID</p>
+                  <p className="text-sm font-medium text-foreground mt-1 truncate">
                     {data?.closureId ?? "-"}
                   </p>
                 </Card>
@@ -618,7 +645,7 @@ export function DailyClosureManagement() {
                 </Card>
               </div>
 
-              {data?.locked && data.closureId ? (
+              {data?.closureId ? (
                 <div className="flex gap-2 flex-wrap mt-6">
                   <Button asChild variant="outline" className="gap-2 bg-transparent">
                     <a href={api.dailyClosures.exportUrl(data.closureId, "pdf")}>
@@ -633,7 +660,6 @@ export function DailyClosureManagement() {
                     </a>
                   </Button>
                   <DailyClosureAdjustmentDialog
-                    businessDate={businessDate}
                     closureId={data.closureId}
                     paymentMethods={paymentMethods}
                   />
