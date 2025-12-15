@@ -7,10 +7,9 @@ import Link from "next/link"
 
 const quickActions = [
   { label: "开台", icon: Plus, href: "/tables", color: "bg-primary" },
-  { label: "日结", icon: FileText, href: "/finance", color: "bg-primary" },
+  { label: "日结", icon: FileText, href: "/daily-closure", color: "bg-primary" },
   { label: "新增菜品", icon: UtensilsCrossed, href: "/menu", color: "bg-primary" },
 ]
-
 
 const tableStatus = [
   { status: "空闲", count: 12, color: "bg-primary" },
