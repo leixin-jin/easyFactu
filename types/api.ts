@@ -141,3 +141,96 @@ export interface TransferOrderInput {
   targetTableId: string
   items?: { id: string; quantity: number }[]
 }
+
+// Daily Closure Types
+export type DailyClosurePaymentGroup = "cash" | "card" | "platform" | "other"
+export type DailyClosureAdjustmentType = "fee" | "rounding" | "other"
+
+export interface DailyClosureOverview {
+  grossRevenue: number
+  netRevenue: number
+  ordersCount: number
+  averageOrderValueGross: number
+  averageOrderValueNet: number
+  refundAmount: number
+  voidAmount: number
+}
+
+export interface DailyClosurePaymentLine {
+  paymentMethod: string
+  paymentGroup: DailyClosurePaymentGroup
+  expectedAmount: number
+  adjustmentsAmount: number
+  actualAmount: number
+}
+
+export interface DailyClosurePayments {
+  expectedTotal: number
+  actualTotal: number
+  difference: number
+  cashExpectedTotal: number
+  cashActualTotal: number
+  nonCashExpectedTotal: number
+  nonCashActualTotal: number
+  lines: DailyClosurePaymentLine[]
+}
+
+export interface DailyClosureItemLine {
+  menuItemId: string | null
+  name: string
+  category: string
+  quantitySold: number
+  revenueAmount: number
+  discountImpactAmount: number | null
+}
+
+export interface DailyClosureItems {
+  categories: string[]
+  lines: DailyClosureItemLine[]
+}
+
+export interface DailyClosureAdjustment {
+  id: string
+  type: DailyClosureAdjustmentType
+  amount: number
+  note: string
+  paymentMethod: string | null
+  createdAt: string
+}
+
+export interface DailyClosureResponse {
+  businessDate: string
+  taxRate: number
+  locked: boolean
+  closureId: string | null
+  lockedAt: string | null
+  overview: DailyClosureOverview
+  payments: DailyClosurePayments
+  items: DailyClosureItems
+  adjustments: DailyClosureAdjustment[]
+  meta?: {
+    refundVoidPolicy?: string
+  }
+}
+
+export interface ConfirmDailyClosureInput {
+  date?: string
+  taxRate?: number
+  adjustments?: Array<{
+    type: DailyClosureAdjustmentType
+    amount: number
+    note: string
+    paymentMethod?: string | null
+  }>
+}
+
+export interface CreateDailyClosureAdjustmentInput {
+  type: DailyClosureAdjustmentType
+  amount: number
+  note: string
+  paymentMethod?: string | null
+}
+
+export interface CreateDailyClosureAdjustmentResponse {
+  adjustments: DailyClosureAdjustment[]
+}

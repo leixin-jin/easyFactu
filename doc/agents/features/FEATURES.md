@@ -18,6 +18,7 @@
 - [结账与交易落库（transaction_backend）](doc/agents/features/transaction_backend-PLAN.md)
 - [AA 分单结账（transaction_AA）](doc/agents/features/transaction_AA-PLAN.md)
 - [改进 POS 订单金额与 AA 逻辑（improve_aa_order_amount）](doc/agents/features/improve_AA_logic.md)
+- [日结功能页（daily_closure）](doc/agents/features/daily_closure-PLAN.md) — 今日总览、入账拆分、菜品明细、锁账与导出
 
 ---
 
