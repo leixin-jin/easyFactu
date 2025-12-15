@@ -199,7 +199,9 @@ export interface DailyClosureAdjustment {
 }
 
 export interface DailyClosureResponse {
-  businessDate: string
+  periodStartAt: string
+  periodEndAt: string
+  sequenceNo: number | null
   taxRate: number
   locked: boolean
   closureId: string | null
@@ -214,7 +216,6 @@ export interface DailyClosureResponse {
 }
 
 export interface ConfirmDailyClosureInput {
-  date?: string
   taxRate?: number
   adjustments?: Array<{
     type: DailyClosureAdjustmentType
