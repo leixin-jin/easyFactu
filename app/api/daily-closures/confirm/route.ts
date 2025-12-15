@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { eq, sql } from "drizzle-orm"
+import { desc, eq } from "drizzle-orm"
 import { z } from "zod"
 
 import { getDb } from "@/lib/db"
-import { toMoneyString } from "@/lib/money"
+import { parseMoney, toMoneyString } from "@/lib/money"
 import {
   dailyClosureAdjustments,
   dailyClosureItemLines,
@@ -17,7 +17,6 @@ import {
   toIsoString,
 } from "@/app/api/daily-closure/utils"
 import { buildDailyClosurePayments, calculateDailyClosureOverview } from "@/lib/daily-closure/calculate"
-import { parseMoney } from "@/lib/money"
 
 const bodySchema = z.object({
   taxRate: z.number().finite().min(0).max(1).optional(),
@@ -31,7 +30,6 @@ const bodySchema = z.object({
       }),
     )
     .optional(),
-  idempotencyKey: z.string().optional(), // 幂等键（可选）
 })
 
 function jsonError(status: number, code: string, error: string, detail?: unknown) {
@@ -60,30 +58,40 @@ export async function POST(req: NextRequest) {
     const db = getDb()
 
     const result = await db.transaction(async (tx) => {
-      // 锁定 daily_closure_state 行（SELECT FOR UPDATE）
+      const now = new Date()
+      const [lastClosure] = await tx
+        .select({
+          periodEndAt: dailyClosures.periodEndAt,
+          sequenceNo: dailyClosures.sequenceNo,
+        })
+        .from(dailyClosures)
+        .orderBy(desc(dailyClosures.sequenceNo))
+        .limit(1)
+
+      // 确保 state 行存在：起点默认取“上一份报告结束时间”
+      await tx
+        .insert(dailyClosureState)
+        .values({
+          id: 1,
+          currentPeriodStartAt: lastClosure?.periodEndAt ?? now,
+          nextSequenceNo: (lastClosure?.sequenceNo ?? 0) + 1,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+
+      // 锁定 state 行（SELECT FOR UPDATE），保证区间推进不重叠/不遗漏
       const [state] = await tx
         .select()
         .from(dailyClosureState)
         .where(eq(dailyClosureState.id, 1))
         .for("update")
 
-      let periodStartAt: Date
-      let sequenceNo: number
-
       if (!state) {
-        // 首次使用，初始化状态
-        periodStartAt = new Date()
-        sequenceNo = 1
-        await tx.insert(dailyClosureState).values({
-          id: 1,
-          currentPeriodStartAt: periodStartAt,
-          nextSequenceNo: 2,
-        })
-      } else {
-        periodStartAt = state.currentPeriodStartAt
-        sequenceNo = state.nextSequenceNo
+        throw new Error("Failed to initialize daily closure state")
       }
 
+      const periodStartAt = state.currentPeriodStartAt
+      const sequenceNo = state.nextSequenceNo
       const periodEndAt = new Date()
       const businessDate = periodEndAt.toISOString().slice(0, 10)
 
@@ -161,16 +169,14 @@ export async function POST(req: NextRequest) {
       }
 
       // 推进 state：下一个区间的起点 = 本次的终点
-      if (state) {
-        await tx
-          .update(dailyClosureState)
-          .set({
-            currentPeriodStartAt: periodEndAt,
-            nextSequenceNo: sequenceNo + 1,
-            updatedAt: periodEndAt,
-          })
-          .where(eq(dailyClosureState.id, 1))
-      }
+      await tx
+        .update(dailyClosureState)
+        .set({
+          currentPeriodStartAt: periodEndAt,
+          nextSequenceNo: sequenceNo + 1,
+          updatedAt: periodEndAt,
+        })
+        .where(eq(dailyClosureState.id, 1))
 
       // 查询完整数据返回
       const paymentLines = await tx

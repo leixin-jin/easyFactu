@@ -366,7 +366,7 @@
           "name": "business_date",
           "type": "date",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "sequence_no": {
           "name": "sequence_no",

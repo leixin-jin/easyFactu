@@ -1,4 +1,4 @@
-import { and, eq, gte, lt, sql } from "drizzle-orm"
+import { and, desc, eq, gte, lt, sql } from "drizzle-orm"
 
 import {
   dailyClosureAdjustments,
@@ -29,6 +29,9 @@ export function getTodayBusinessDate() {
   return new Date().toISOString().slice(0, 10)
 }
 
+export function toIsoString(value: Date): string
+export function toIsoString(value: string): string
+export function toIsoString(value: unknown): string | null
 export function toIsoString(value: unknown): string | null {
   if (value instanceof Date) return value.toISOString()
   if (typeof value === "string") {
@@ -402,17 +405,33 @@ export async function getOrInitDailyClosureState(
     }
   }
 
-  // 初始化状态：起点为当前时刻
   const now = new Date()
-  await db.insert(dailyClosureState).values({
-    id: 1,
-    currentPeriodStartAt: now,
-    nextSequenceNo: 1,
-  })
+  const [lastClosure] = await db
+    .select({
+      periodEndAt: dailyClosures.periodEndAt,
+      sequenceNo: dailyClosures.sequenceNo,
+    })
+    .from(dailyClosures)
+    .orderBy(desc(dailyClosures.sequenceNo))
+    .limit(1)
+
+  // 初始化状态：从“上一份报告结束时间”开始；若没有历史报告，则从 now 开始
+  const currentPeriodStartAt = lastClosure?.periodEndAt ?? now
+  const nextSequenceNo = (lastClosure?.sequenceNo ?? 0) + 1
+
+  await db
+    .insert(dailyClosureState)
+    .values({
+      id: 1,
+      currentPeriodStartAt,
+      nextSequenceNo,
+      updatedAt: now,
+    })
+    .onConflictDoNothing()
 
   return {
-    currentPeriodStartAt: now,
-    nextSequenceNo: 1,
+    currentPeriodStartAt,
+    nextSequenceNo,
   }
 }
 

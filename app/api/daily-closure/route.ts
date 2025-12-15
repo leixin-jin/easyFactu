@@ -19,7 +19,7 @@ function jsonError(status: number, code: string, error: string, detail?: unknown
  * - periodStartAt: 从 daily_closure_state.current_period_start_at 读取
  * - periodEndAt: 当前时刻（now）
  */
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const db = getDb()
 
@@ -45,7 +45,6 @@ export async function GET(req: NextRequest) {
       locked: false,
       closureId: null,
       lockedAt: null,
-      lastReportSequenceNo: state.nextSequenceNo > 1 ? state.nextSequenceNo - 1 : null,
       overview: snapshot.overview,
       payments: buildDailyClosurePayments(snapshot.paymentLines, []),
       items: snapshot.items,

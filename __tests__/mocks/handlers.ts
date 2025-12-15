@@ -145,12 +145,15 @@ export const handlers = [
     )
   }),
 
-  http.get("/api/daily-closure", ({ request }) => {
-    const url = new URL(request.url)
-    const businessDate = url.searchParams.get("date") ?? new Date().toISOString().slice(0, 10)
+  http.get("/api/daily-closure", () => {
+    const now = new Date()
+    const periodEndAt = now.toISOString()
+    const periodStartAt = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString()
 
     return HttpResponse.json({
-      businessDate,
+      periodStartAt,
+      periodEndAt,
+      sequenceNo: null,
       taxRate: 0.1,
       locked: false,
       closureId: null,

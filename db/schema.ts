@@ -140,7 +140,7 @@ export const dailyClosures = pgTable(
   "daily_closures",
   {
     id: uuid("id").default(sql`gen_random_uuid()`).primaryKey().notNull(),
-    businessDate: date("business_date"), // 保留但不再是唯一约束，允许同日多条记录
+    businessDate: date("business_date").notNull(), // 保留但移除唯一约束，允许同日多条记录
     sequenceNo: integer("sequence_no").notNull(), // 按用户点击顺序递增
     periodStartAt: timestamp("period_start_at", { withTimezone: false }).notNull(), // 统计区间起点
     periodEndAt: timestamp("period_end_at", { withTimezone: false }).notNull(), // 统计区间终点=生成时刻

@@ -206,7 +206,6 @@ export interface DailyClosureResponse {
   locked: boolean
   closureId: string | null
   lockedAt: string | null
-  lastReportSequenceNo?: number | null
   overview: DailyClosureOverview
   payments: DailyClosurePayments
   items: DailyClosureItems
@@ -224,7 +223,6 @@ export interface ConfirmDailyClosureInput {
     note: string
     paymentMethod?: string | null
   }>
-  idempotencyKey?: string
 }
 
 export interface CreateDailyClosureAdjustmentInput {

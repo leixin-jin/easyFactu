@@ -1,9 +1,9 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { FileDown, Lock, Plus, RefreshCw } from "lucide-react"
+import { Lock, Plus, RefreshCw } from "lucide-react"
 
-import { api, ApiError } from "@/lib/api"
+import { ApiError } from "@/lib/api"
 import { formatMoney } from "@/lib/money"
 import {
   useConfirmDailyClosure,
@@ -269,18 +269,10 @@ export function DailyClosureManagement() {
 
       <Card className="p-4 bg-card border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="secondary">
-            {formatPeriod(data?.periodStartAt, data?.periodEndAt)}
+          <Badge variant="secondary">{formatPeriod(data?.periodStartAt, data?.periodEndAt)}</Badge>
+          <Badge variant="outline" className="bg-transparent">
+            预览
           </Badge>
-          {data?.lastReportSequenceNo ? (
-            <Badge className="gap-1">
-              已生成 {data.lastReportSequenceNo} 份报告
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="bg-transparent">
-              尚未生成报告
-            </Badge>
-          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button
@@ -292,30 +284,6 @@ export function DailyClosureManagement() {
             <RefreshCw className="w-4 h-4" />
             刷新
           </Button>
-          {data?.closureId && (
-            <>
-              <Button
-                asChild
-                variant="outline"
-                className="gap-2 bg-transparent"
-              >
-                <a href={api.dailyClosures.exportUrl(data.closureId, "pdf")}>
-                  <FileDown className="w-4 h-4" />
-                  导出 PDF
-                </a>
-              </Button>
-              <Button
-                asChild
-                variant="outline"
-                className="gap-2 bg-transparent"
-              >
-                <a href={api.dailyClosures.exportUrl(data.closureId, "xlsx")}>
-                  <FileDown className="w-4 h-4" />
-                  导出 Excel
-                </a>
-              </Button>
-            </>
-          )}
           <Button
             className="gap-2"
             onClick={handleConfirm}
@@ -609,7 +577,7 @@ export function DailyClosureManagement() {
                 <div className="space-y-1">
                   <h2 className="text-lg font-semibold text-foreground">报告与导出</h2>
                   <p className="text-sm text-muted-foreground">
-                    点击日结确认生成报告快照；可连续生成多份报告，仍可通过"补录差额"追加说明记录
+                    点击日结确认生成报告快照；可连续生成多份报告，仍可通过“补录差额”追加说明记录
                   </p>
                 </div>
                 <Button className="gap-2" onClick={handleConfirm} disabled={confirm.isPending}>
@@ -626,15 +594,15 @@ export function DailyClosureManagement() {
                   </p>
                 </Card>
                 <Card className="p-4 bg-muted/30 border-border">
-                  <p className="text-xs text-muted-foreground">已生成报告数</p>
+                  <p className="text-xs text-muted-foreground">区间起点</p>
                   <p className="text-sm font-medium text-foreground mt-1">
-                    {data?.lastReportSequenceNo ?? 0} 份
+                    {data?.periodStartAt ?? "-"}
                   </p>
                 </Card>
                 <Card className="p-4 bg-muted/30 border-border">
-                  <p className="text-xs text-muted-foreground">最近报告ID</p>
-                  <p className="text-sm font-medium text-foreground mt-1 truncate">
-                    {data?.closureId ?? "-"}
+                  <p className="text-xs text-muted-foreground">区间终点</p>
+                  <p className="text-sm font-medium text-foreground mt-1">
+                    {data?.periodEndAt ?? "-"}
                   </p>
                 </Card>
                 <Card className="p-4 bg-muted/30 border-border">
@@ -644,27 +612,6 @@ export function DailyClosureManagement() {
                   </p>
                 </Card>
               </div>
-
-              {data?.closureId ? (
-                <div className="flex gap-2 flex-wrap mt-6">
-                  <Button asChild variant="outline" className="gap-2 bg-transparent">
-                    <a href={api.dailyClosures.exportUrl(data.closureId, "pdf")}>
-                      <FileDown className="w-4 h-4" />
-                      导出 PDF
-                    </a>
-                  </Button>
-                  <Button asChild variant="outline" className="gap-2 bg-transparent">
-                    <a href={api.dailyClosures.exportUrl(data.closureId, "xlsx")}>
-                      <FileDown className="w-4 h-4" />
-                      导出 Excel
-                    </a>
-                  </Button>
-                  <DailyClosureAdjustmentDialog
-                    closureId={data.closureId}
-                    paymentMethods={paymentMethods}
-                  />
-                </div>
-              ) : null}
             </Card>
 
             <Card className="bg-card border-border">
