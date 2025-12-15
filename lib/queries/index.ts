@@ -9,3 +9,9 @@ export {
   useCheckout,
   useTransferOrder,
 } from "./use-orders"
+export {
+  dailyClosureKeys,
+  useDailyClosureQuery,
+  useConfirmDailyClosure,
+  useCreateDailyClosureAdjustment,
+} from "./use-daily-closure"

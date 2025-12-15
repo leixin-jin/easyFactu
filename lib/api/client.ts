@@ -12,9 +12,40 @@ import type {
   ClearOrderInput,
   UpdateOrderItemInput,
   TransferOrderInput,
+  DailyClosureResponse,
+  ConfirmDailyClosureInput,
+  CreateDailyClosureAdjustmentInput,
+  CreateDailyClosureAdjustmentResponse,
 } from "@/types/api"
 
 export const api = {
+  dailyClosure: {
+    get: (date?: string) =>
+      fetcher<DailyClosureResponse>(
+        date ? `/api/daily-closure?date=${encodeURIComponent(date)}` : "/api/daily-closure",
+      ),
+  },
+
+  dailyClosures: {
+    confirm: (data: ConfirmDailyClosureInput) =>
+      fetcher<DailyClosureResponse>("/api/daily-closures/confirm", {
+        method: "POST",
+        body: data,
+      }),
+
+    createAdjustment: (closureId: string, data: CreateDailyClosureAdjustmentInput) =>
+      fetcher<CreateDailyClosureAdjustmentResponse>(
+        `/api/daily-closures/${encodeURIComponent(closureId)}/adjustments`,
+        {
+          method: "POST",
+          body: data,
+        },
+      ),
+
+    exportUrl: (closureId: string, format: "pdf" | "xlsx") =>
+      `/api/daily-closures/${encodeURIComponent(closureId)}/export?format=${encodeURIComponent(format)}`,
+  },
+
   tables: {
     list: () => fetcher<TableResponse[]>("/api/restaurant-tables"),
 

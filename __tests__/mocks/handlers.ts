@@ -144,4 +144,76 @@ export const handlers = [
       { status: 201 },
     )
   }),
+
+  http.get("/api/daily-closure", ({ request }) => {
+    const url = new URL(request.url)
+    const businessDate = url.searchParams.get("date") ?? new Date().toISOString().slice(0, 10)
+
+    return HttpResponse.json({
+      businessDate,
+      taxRate: 0.1,
+      locked: false,
+      closureId: null,
+      lockedAt: null,
+      overview: {
+        grossRevenue: 71,
+        netRevenue: 64.55,
+        ordersCount: 2,
+        averageOrderValueGross: 35.5,
+        averageOrderValueNet: 32.28,
+        refundAmount: 0,
+        voidAmount: 0,
+      },
+      payments: {
+        expectedTotal: 71,
+        actualTotal: 71,
+        difference: 0,
+        cashExpectedTotal: 20,
+        cashActualTotal: 20,
+        nonCashExpectedTotal: 51,
+        nonCashActualTotal: 51,
+        lines: [
+          {
+            paymentMethod: "cash",
+            paymentGroup: "cash",
+            expectedAmount: 20,
+            adjustmentsAmount: 0,
+            actualAmount: 20,
+          },
+          {
+            paymentMethod: "visa",
+            paymentGroup: "card",
+            expectedAmount: 51,
+            adjustmentsAmount: 0,
+            actualAmount: 51,
+          },
+        ],
+      },
+      items: {
+        categories: ["主食", "饮料"],
+        lines: [
+          {
+            menuItemId: "m1",
+            name: "宫保鸡丁",
+            category: "主食",
+            quantitySold: 2,
+            revenueAmount: 56,
+            discountImpactAmount: 0,
+          },
+          {
+            menuItemId: "m3",
+            name: "可乐",
+            category: "饮料",
+            quantitySold: 3,
+            revenueAmount: 15,
+            discountImpactAmount: null,
+          },
+        ],
+      },
+      adjustments: [],
+      meta: {
+        refundVoidPolicy: "测试环境：退款/作废金额统计暂返回 0",
+      },
+    })
+  }),
 ]
