@@ -18,12 +18,18 @@ import type {
   CreateDailyClosureAdjustmentResponse,
   ReportsResponse,
   ReportGranularity,
+  CheckoutHistoryResponse,
 } from "@/types/api"
 
 export const api = {
   dailyClosure: {
     get: () =>
       fetcher<DailyClosureResponse>("/api/daily-closure"),
+  },
+
+  checkoutHistory: {
+    list: ({ limit = 50 }: { limit?: number } = {}) =>
+      fetcher<CheckoutHistoryResponse>(`/api/checkout-history?limit=${encodeURIComponent(String(limit))}`),
   },
 
   dailyClosures: {

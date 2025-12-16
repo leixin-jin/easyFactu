@@ -142,6 +142,19 @@ export interface TransferOrderInput {
   items?: { id: string; quantity: number }[]
 }
 
+// Checkout History Types
+export interface CheckoutHistoryItem {
+  transactionId: string
+  tableNumber: string | null
+  amount: number
+  createdAt: string
+  orderId: string | null
+}
+
+export interface CheckoutHistoryResponse {
+  items: CheckoutHistoryItem[]
+}
+
 // Daily Closure Types
 export type DailyClosurePaymentGroup = "cash" | "card" | "platform" | "other"
 export type DailyClosureAdjustmentType = "fee" | "rounding" | "other"

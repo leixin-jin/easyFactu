@@ -38,6 +38,32 @@ export const handlers = [
     })
   }),
 
+  http.get("/api/checkout-history", ({ request }) => {
+    const url = new URL(request.url)
+    const limitParam = url.searchParams.get("limit") ?? "50"
+    const limit = Number.parseInt(limitParam, 10)
+
+    const items = [
+      {
+        transactionId: "tx-1",
+        tableNumber: "A1",
+        amount: 12.3,
+        createdAt: new Date("2025-01-02T12:00:00.000Z").toISOString(),
+        orderId: "order-1",
+      },
+      {
+        transactionId: "tx-2",
+        tableNumber: "B2",
+        amount: 5,
+        createdAt: new Date("2025-01-02T11:00:00.000Z").toISOString(),
+        orderId: "order-2",
+      },
+    ]
+
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(200, limit)) : 50
+    return HttpResponse.json({ items: items.slice(0, safeLimit) })
+  }),
+
   http.get("/api/restaurant-tables", () => {
     return HttpResponse.json([
       { id: "1", number: "A-01", status: "idle", capacity: 4, area: null, amount: null },
