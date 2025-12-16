@@ -294,9 +294,10 @@ export function ReportsView() {
                     <Line
                       type="monotone"
                       dataKey="revenue"
-                      stroke="var(--color-revenue)"
+                      stroke="currentColor"
                       strokeWidth={2}
                       dot={false}
+                      className="text-primary"
                     />
                   </LineChart>
                 </ChartContainer>
