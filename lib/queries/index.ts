@@ -16,3 +16,4 @@ export {
   useCreateDailyClosureAdjustment,
 } from "./use-daily-closure"
 export { reportsKeys, useReportsQuery } from "./use-reports"
+export { checkoutHistoryKeys, useCheckoutHistoryQuery } from "./use-checkout-history"
