@@ -16,6 +16,8 @@ import type {
   ConfirmDailyClosureInput,
   CreateDailyClosureAdjustmentInput,
   CreateDailyClosureAdjustmentResponse,
+  ReportsResponse,
+  ReportGranularity,
 } from "@/types/api"
 
 export const api = {
@@ -107,5 +109,13 @@ export const api = {
         method: "POST",
         body: data,
       }),
+  },
+
+  reports: {
+    get: (granularity: ReportGranularity) =>
+      fetcher<ReportsResponse>(`/api/reports?granularity=${encodeURIComponent(granularity)}`),
+
+    exportUrl: (granularity: ReportGranularity, format: "xlsx" = "xlsx") =>
+      `/api/reports/export?format=${encodeURIComponent(format)}&granularity=${encodeURIComponent(granularity)}`,
   },
 }
