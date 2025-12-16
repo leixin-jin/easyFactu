@@ -60,12 +60,15 @@ export async function buildReportsPayload(input: {
   const incomeTransactions = incomeRows.map((row: any) => ({
     paymentMethod: row.paymentMethod,
     amount: parseMoney(row.amount),
-  }))
+  })) as Array<{ paymentMethod: string; amount: number }>
 
   const paymentLines = aggregateIncomeByPaymentMethod(incomeTransactions)
   const payments = buildDailyClosurePayments(paymentLines, [])
 
-  const grossRevenue = incomeTransactions.reduce((sum, t) => sum + safeNumber(t.amount), 0)
+  const grossRevenue = incomeTransactions.reduce<number>(
+    (sum, t) => sum + safeNumber(t.amount),
+    0,
+  )
 
   const [ordersCountRow] = await db
     .select({ count: sql<number>`count(*)` })
@@ -206,7 +209,7 @@ export async function buildReportsPayload(input: {
   const dateTrunc = trendDateTrunc(bucketUnit)
   const dateTruncLiteral = sql.raw(`'${dateTrunc}'`)
 
-  const rawTrendRows = await db
+  const rawTrendRows: Array<{ bucket: unknown; revenue: unknown }> = await db
     .select({
       bucket: sql<Date>`date_trunc(${dateTruncLiteral}, ${transactions.createdAt})`.as("bucket"),
       revenue: sql<string>`sum(${transactions.amount})`.as("revenue"),
@@ -222,9 +225,9 @@ export async function buildReportsPayload(input: {
     .groupBy(sql`1`)
     .orderBy(sql`1`)
 
-  const trendRows = rawTrendRows
-    .map((row: any) => ({
-      bucket: row.bucket instanceof Date ? row.bucket : new Date(row.bucket),
+  const trendRows: Array<{ bucket: Date; revenue: number }> = rawTrendRows
+    .map((row) => ({
+      bucket: row.bucket instanceof Date ? row.bucket : new Date(String(row.bucket)),
       revenue: parseMoney(row.revenue),
     }))
     .filter((row) => Number.isFinite(row.bucket.getTime()))
