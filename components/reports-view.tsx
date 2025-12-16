@@ -1,42 +1,112 @@
 "use client"
 
 import { useState } from "react"
+import { format } from "date-fns"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Download, TrendingUp, TrendingDown, DollarSign, ShoppingBag, Users, Clock } from "lucide-react"
+import { Download, TrendingUp, DollarSign, ShoppingBag, Users, CreditCard } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { CartesianGrid, LabelList, Line, LineChart, XAxis, YAxis } from "recharts"
+
+import { api } from "@/lib/api"
+import { formatMoney } from "@/lib/money"
+import { useReportsQuery } from "@/lib/queries"
+import type { ReportGranularity } from "@/types/api"
+
+import { useToast } from "@/components/ui/use-toast"
 
 export function ReportsView() {
-  const [selectedPeriod, setSelectedPeriod] = useState("month")
+  const { toast } = useToast()
+  const [selectedPeriod, setSelectedPeriod] = useState<ReportGranularity>("month")
+  const [exporting, setExporting] = useState(false)
 
-  const salesData = [
-    { date: "10-23", revenue: 2890, orders: 78 },
-    { date: "10-24", revenue: 3120, orders: 85 },
-    { date: "10-25", revenue: 2750, orders: 72 },
-    { date: "10-26", revenue: 3340, orders: 91 },
-    { date: "10-27", revenue: 3120, orders: 84 },
-    { date: "10-28", revenue: 2890, orders: 79 },
-    { date: "10-29", revenue: 3245, orders: 87 },
-  ]
+  const reportsQuery = useReportsQuery(selectedPeriod)
+  const payload = reportsQuery.data
 
-  const topItems = [
-    { name: "意式肉酱面", sales: 203, revenue: 3410.4 },
-    { name: "凯撒沙拉", sales: 156, revenue: 1950.0 },
-    { name: "玛格丽特披萨", sales: 178, revenue: 2581.0 },
-    { name: "烤三文鱼", sales: 134, revenue: 3873.6 },
-    { name: "提拉米苏", sales: 189, revenue: 1606.5 },
-  ]
+  const kpis = payload?.kpis ?? {
+    grossRevenue: 0,
+    ordersCount: 0,
+    averageOrderValueGross: 0,
+    cashAmount: 0,
+    bankAmount: 0,
+    cashRatio: 0,
+    bankRatio: 0,
+  }
 
-  const peakHours = [
-    { hour: "11:00-12:00", orders: 23, revenue: 856.5 },
-    { hour: "12:00-13:00", orders: 45, revenue: 1678.9 },
-    { hour: "13:00-14:00", orders: 38, revenue: 1423.2 },
-    { hour: "18:00-19:00", orders: 52, revenue: 1945.8 },
-    { hour: "19:00-20:00", orders: 67, revenue: 2501.3 },
-    { hour: "20:00-21:00", orders: 48, revenue: 1789.6 },
-  ]
+  const salesTrend = payload?.salesTrend ?? []
+  const topItems = payload?.topItems ?? []
+
+  const isEmptyTrend = salesTrend.length === 0 || salesTrend.every((p) => !p.revenue)
+
+  const formatBucketLabel = (bucketIso: string) => {
+    const date = new Date(bucketIso)
+    if (!Number.isFinite(date.getTime())) return bucketIso
+
+    switch (selectedPeriod) {
+      case "day":
+        return format(date, "HH:mm")
+      case "week":
+      case "month":
+        return format(date, "MM-dd")
+      case "year":
+        return format(date, "MM月")
+    }
+  }
+
+  const formatEuro = (value: number, options?: { minimumFractionDigits?: number; maximumFractionDigits?: number }) =>
+    `€${formatMoney(value, options)}`
+
+  const handlePeriodChange = (value: string) => {
+    if (value === "day" || value === "week" || value === "month" || value === "year") {
+      setSelectedPeriod(value)
+    }
+  }
+
+  const handleExport = async () => {
+    if (exporting) return
+    setExporting(true)
+
+    try {
+      const url = api.reports.exportUrl(selectedPeriod, "xlsx")
+      const response = await fetch(url, { method: "GET" })
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "")
+        throw new Error(detail || `HTTP ${response.status}`)
+      }
+
+      const buffer = await response.arrayBuffer()
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      const disposition = response.headers.get("Content-Disposition") ?? ""
+      const match = disposition.match(/filename=\"?([^\";]+)\"?/i)
+      const filename = match?.[1] ?? `reports-${selectedPeriod}.xlsx`
+
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = objectUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      toast({
+        title: "导出失败",
+        description: message || "无法导出报表，请稍后重试",
+        variant: "destructive",
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -47,18 +117,23 @@ export function ReportsView() {
           <p className="text-muted-foreground mt-1">查看经营数据和分析报告</p>
         </div>
         <div className="flex gap-2">
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+          <Select value={selectedPeriod} onValueChange={handlePeriodChange}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="today">今日</SelectItem>
+              <SelectItem value="day">本日</SelectItem>
               <SelectItem value="week">本周</SelectItem>
               <SelectItem value="month">本月</SelectItem>
               <SelectItem value="year">本年</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="gap-2 bg-transparent">
+          <Button
+            variant="outline"
+            className="gap-2 bg-transparent"
+            disabled={exporting}
+            onClick={handleExport}
+          >
             <Download className="w-4 h-4" />
             导出报表
           </Button>
@@ -71,10 +146,16 @@ export function ReportsView() {
           <div className="flex items-start justify-between">
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">总营业额</p>
-              <p className="text-2xl font-bold text-foreground">€21,355</p>
+              <div className="text-2xl font-bold text-foreground">
+                {reportsQuery.isLoading ? (
+                  <Skeleton className="h-8 w-24" />
+                ) : (
+                  formatEuro(kpis.grossRevenue, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                )}
+              </div>
               <div className="flex items-center gap-1">
                 <TrendingUp className="w-4 h-4 text-primary" />
-                <span className="text-primary text-sm">+12.5%</span>
+                <span className="text-primary text-sm">本期</span>
               </div>
             </div>
             <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -87,10 +168,12 @@ export function ReportsView() {
           <div className="flex items-start justify-between">
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">总订单数</p>
-              <p className="text-2xl font-bold text-foreground">576</p>
+              <div className="text-2xl font-bold text-foreground">
+                {reportsQuery.isLoading ? <Skeleton className="h-8 w-16" /> : kpis.ordersCount}
+              </div>
               <div className="flex items-center gap-1">
                 <TrendingUp className="w-4 h-4 text-primary" />
-                <span className="text-primary text-sm">+8.2%</span>
+                <span className="text-primary text-sm">本期</span>
               </div>
             </div>
             <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
@@ -103,10 +186,16 @@ export function ReportsView() {
           <div className="flex items-start justify-between">
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">客单价</p>
-              <p className="text-2xl font-bold text-foreground">€37.06</p>
+              <div className="text-2xl font-bold text-foreground">
+                {reportsQuery.isLoading ? (
+                  <Skeleton className="h-8 w-20" />
+                ) : (
+                  formatEuro(kpis.averageOrderValueGross)
+                )}
+              </div>
               <div className="flex items-center gap-1">
                 <TrendingUp className="w-4 h-4 text-primary" />
-                <span className="text-primary text-sm">+3.8%</span>
+                <span className="text-primary text-sm">本期</span>
               </div>
             </div>
             <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -118,15 +207,27 @@ export function ReportsView() {
         <Card className="p-6 bg-card border-border">
           <div className="flex items-start justify-between">
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">平均翻台时长</p>
-              <p className="text-2xl font-bold text-foreground">48分钟</p>
+              <p className="text-sm text-muted-foreground">现金 vs 银行</p>
+              <div className="text-2xl font-bold text-foreground">
+                {reportsQuery.isLoading ? (
+                  <Skeleton className="h-8 w-28" />
+                ) : (
+                  `${Math.round(kpis.cashRatio * 100)}% / ${Math.round(kpis.bankRatio * 100)}%`
+                )}
+              </div>
               <div className="flex items-center gap-1">
-                <TrendingDown className="w-4 h-4 text-primary" />
-                <span className="text-primary text-sm">-5.3%</span>
+                {reportsQuery.isLoading ? (
+                  <Skeleton className="h-4 w-24" />
+                ) : (
+                  <span className="text-primary text-sm">
+                    {formatEuro(kpis.cashAmount, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} /{" "}
+                    {formatEuro(kpis.bankAmount, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  </span>
+                )}
               </div>
             </div>
             <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
-              <Clock className="w-6 h-6 text-accent" />
+              <CreditCard className="w-6 h-6 text-accent" />
             </div>
           </div>
         </Card>
@@ -137,36 +238,87 @@ export function ReportsView() {
         <TabsList>
           <TabsTrigger value="sales">销售趋势</TabsTrigger>
           <TabsTrigger value="items">热销菜品</TabsTrigger>
-          <TabsTrigger value="hours">高峰时段</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sales" className="space-y-4">
           <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-6">每日销售趋势</h2>
-            <div className="space-y-4">
-              {salesData.map((day, index) => {
-                const maxRevenue = Math.max(...salesData.map((d) => d.revenue))
-                const percentage = (day.revenue / maxRevenue) * 100
-                return (
-                  <div key={index} className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground w-20">{day.date}</span>
-                      <div className="flex-1 mx-4">
-                        <div className="h-8 bg-muted rounded-lg overflow-hidden">
-                          <div
-                            className="h-full bg-primary rounded-lg flex items-center justify-end px-3"
-                            style={{ width: `${percentage}%` }}
-                          >
-                            <span className="text-xs font-medium text-primary-foreground">{day.orders}单</span>
-                          </div>
-                        </div>
-                      </div>
-                      <span className="font-bold text-foreground w-24 text-right">€{day.revenue.toFixed(0)}</span>
-                    </div>
+            <h2 className="text-lg font-semibold text-foreground mb-6">营业额趋势</h2>
+            {reportsQuery.isLoading ? (
+              <Skeleton className="h-[260px] w-full" />
+            ) : (
+              <div className="relative">
+                <ChartContainer
+                  config={{
+                    revenue: {
+                      label: "营业额",
+                      color: "hsl(var(--primary))",
+                    },
+                  }}
+                  className="h-[260px] w-full aspect-auto"
+                >
+                  <LineChart data={salesTrend} margin={{ left: 8, right: 16, top: 24, bottom: 8 }}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      dataKey="bucket"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      minTickGap={16}
+                      tickFormatter={formatBucketLabel}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      width={56}
+                      tickFormatter={(value) =>
+                        `€${formatMoney(Number(value), { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                      }
+                    />
+                    <ChartTooltip
+                      cursor={false}
+                      content={
+                        <ChartTooltipContent
+                          labelFormatter={(label) => formatBucketLabel(String(label))}
+                          formatter={(value) => (
+                            <div className="flex flex-1 justify-between leading-none">
+                              <span className="text-muted-foreground">营业额</span>
+                              <span className="text-foreground font-mono font-medium tabular-nums">
+                                {formatEuro(Number(value))}
+                              </span>
+                            </div>
+                          )}
+                        />
+                      }
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      dot={{ r: 4, fill: "#f97316", stroke: "#f97316" }}
+                      activeDot={{ r: 5, fill: "#f97316", stroke: "#f97316" }}
+                      className="text-primary"
+                    >
+                      <LabelList
+                        dataKey="revenue"
+                        position="top"
+                        offset={8}
+                        className="fill-muted-foreground"
+                        formatter={(value: unknown) =>
+                          `€${formatMoney(Number(value), { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                        }
+                      />
+                    </Line>
+                  </LineChart>
+                </ChartContainer>
+                {isEmptyTrend && (
+                  <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+                    暂无数据
                   </div>
-                )
-              })}
-            </div>
+                )}
+              </div>
+            )}
           </Card>
         </TabsContent>
 
@@ -175,57 +327,52 @@ export function ReportsView() {
             <h2 className="text-lg font-semibold text-foreground mb-6">热销菜品排行</h2>
             <ScrollArea className="h-[400px]">
               <div className="space-y-4">
-                {topItems.map((item, index) => (
-                  <Card key={index} className="p-4 bg-muted/30 border-border">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <span className="text-lg font-bold text-primary">#{index + 1}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-foreground mb-1">{item.name}</h3>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span>销量: {item.sales}</span>
-                          <span>营收: €{item.revenue.toFixed(2)}</span>
+                {reportsQuery.isLoading ? (
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <Card key={index} className="p-4 bg-muted/30 border-border">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg font-bold text-primary">#{index + 1}</span>
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <Skeleton className="h-4 w-40" />
+                          <Skeleton className="h-4 w-56" />
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-primary">€{item.revenue.toFixed(0)}</p>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </ScrollArea>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="hours" className="space-y-4">
-          <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-6">高峰时段分析</h2>
-            <div className="space-y-4">
-              {peakHours.map((hour, index) => {
-                const maxOrders = Math.max(...peakHours.map((h) => h.orders))
-                const percentage = (hour.orders / maxOrders) * 100
-                return (
-                  <div key={index} className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground w-32">{hour.hour}</span>
-                      <div className="flex-1 mx-4">
-                        <div className="h-8 bg-muted rounded-lg overflow-hidden">
-                          <div
-                            className="h-full bg-accent rounded-lg flex items-center justify-end px-3"
-                            style={{ width: `${percentage}%` }}
-                          >
-                            <span className="text-xs font-medium text-accent-foreground">{hour.orders}单</span>
+                    </Card>
+                  ))
+                ) : topItems.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">暂无数据</div>
+                ) : (
+                  topItems.map((item, index) => (
+                    <Card key={`${item.menuItemId ?? item.name}-${index}`} className="p-4 bg-muted/30 border-border">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg font-bold text-primary">#{index + 1}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 min-w-0">
+                            <h3 className="font-medium text-foreground truncate">{item.name}</h3>
+                            <Badge variant="secondary" className="shrink-0">
+                              {item.category}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span>销量: {item.quantitySold}</span>
+                            <span>营收: {formatEuro(item.revenueAmount)}</span>
                           </div>
                         </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-primary">
+                            {formatEuro(item.revenueAmount, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </p>
+                        </div>
                       </div>
-                      <span className="font-bold text-foreground w-24 text-right">€{hour.revenue.toFixed(0)}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
           </Card>
         </TabsContent>
       </Tabs>

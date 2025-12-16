@@ -235,3 +235,42 @@ export interface CreateDailyClosureAdjustmentInput {
 export interface CreateDailyClosureAdjustmentResponse {
   adjustments: DailyClosureAdjustment[]
 }
+
+// Reports Types
+export type ReportGranularity = "day" | "week" | "month" | "year"
+
+export interface ReportsRange {
+  granularity: ReportGranularity
+  startAt: string
+  endAt: string
+}
+
+export interface ReportsKpis {
+  grossRevenue: number
+  ordersCount: number
+  averageOrderValueGross: number
+  cashAmount: number
+  bankAmount: number
+  cashRatio: number
+  bankRatio: number
+}
+
+export interface ReportsSalesTrendPoint {
+  bucket: string
+  revenue: number
+}
+
+export interface ReportsTopItem {
+  menuItemId: string | null
+  name: string
+  category: string
+  quantitySold: number
+  revenueAmount: number
+}
+
+export interface ReportsResponse {
+  range: ReportsRange
+  kpis: ReportsKpis
+  salesTrend: ReportsSalesTrendPoint[]
+  topItems: ReportsTopItem[]
+}

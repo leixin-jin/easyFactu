@@ -1,6 +1,43 @@
 import { http, HttpResponse } from "msw"
 
 export const handlers = [
+  http.get("/api/reports", ({ request }) => {
+    const url = new URL(request.url)
+    const granularity = (url.searchParams.get("granularity") ?? "month") as
+      | "day"
+      | "week"
+      | "month"
+      | "year"
+
+    const base = granularity === "year" ? 12000 : granularity === "month" ? 3200 : 200
+
+    return HttpResponse.json({
+      range: {
+        granularity,
+        startAt: new Date(2025, 11, 1).toISOString(),
+        endAt: new Date(2026, 0, 1).toISOString(),
+      },
+      kpis: {
+        grossRevenue: base,
+        ordersCount: granularity === "year" ? 480 : 120,
+        averageOrderValueGross: granularity === "year" ? 25 : 26.67,
+        cashAmount: base * 0.25,
+        bankAmount: base * 0.75,
+        cashRatio: 0.25,
+        bankRatio: 0.75,
+      },
+      salesTrend: [
+        { bucket: new Date(2025, 11, 1).toISOString(), revenue: base * 0.2 },
+        { bucket: new Date(2025, 11, 2).toISOString(), revenue: base * 0.4 },
+        { bucket: new Date(2025, 11, 3).toISOString(), revenue: base * 0.3 },
+      ],
+      topItems: [
+        { menuItemId: "m1", name: "宫保鸡丁", category: "主食", quantitySold: 12, revenueAmount: 336 },
+        { menuItemId: "m3", name: "可乐", category: "饮料", quantitySold: 30, revenueAmount: 150 },
+      ],
+    })
+  }),
+
   http.get("/api/restaurant-tables", () => {
     return HttpResponse.json([
       { id: "1", number: "A-01", status: "idle", capacity: 4, area: null, amount: null },
