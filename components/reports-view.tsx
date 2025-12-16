@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
+import { CartesianGrid, LabelList, Line, LineChart, XAxis, YAxis } from "recharts"
 
 import { api } from "@/lib/api"
 import { formatMoney } from "@/lib/money"
@@ -256,7 +256,7 @@ export function ReportsView() {
                   }}
                   className="h-[260px] w-full aspect-auto"
                 >
-                  <LineChart data={salesTrend} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
+                  <LineChart data={salesTrend} margin={{ left: 8, right: 16, top: 24, bottom: 8 }}>
                     <CartesianGrid vertical={false} />
                     <XAxis
                       dataKey="bucket"
@@ -296,9 +296,20 @@ export function ReportsView() {
                       dataKey="revenue"
                       stroke="currentColor"
                       strokeWidth={2}
-                      dot={false}
+                      dot={{ r: 4, fill: "#f97316", stroke: "#f97316" }}
+                      activeDot={{ r: 5, fill: "#f97316", stroke: "#f97316" }}
                       className="text-primary"
-                    />
+                    >
+                      <LabelList
+                        dataKey="revenue"
+                        position="top"
+                        offset={8}
+                        className="fill-muted-foreground"
+                        formatter={(value: unknown) =>
+                          `€${formatMoney(Number(value), { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                        }
+                      />
+                    </Line>
                   </LineChart>
                 </ChartContainer>
                 {isEmptyTrend && (
