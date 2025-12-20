@@ -9,6 +9,7 @@ import {
   orders,
   restaurantTables,
   transactions,
+  transactionItems,
 } from "@/db/schema";
 import { parseMoney, toMoneyString } from "@/lib/money";
 import { buildOrderBatches, type OrderItemRow } from "@/lib/order-utils";
@@ -449,6 +450,36 @@ export async function POST(req: NextRequest) {
           })
           .returning();
 
+        // 写入交易明细行 (AA 模式：只写分配的数量)
+        const transactionItemsToInsert: Array<{
+          transactionId: string;
+          orderItemId: string;
+          quantity: number;
+          menuItemId: string;
+          nameSnapshot: string;
+          unitPrice: string;
+        }> = [];
+
+        for (const [menuItemId, entry] of itemsByMenuItem.entries()) {
+          for (const row of entry.rows) {
+            const allocatedQty = allocationByRowId.get(row.id) ?? 0;
+            if (allocatedQty > 0) {
+              transactionItemsToInsert.push({
+                transactionId: transactionRow.id,
+                orderItemId: row.id,
+                quantity: allocatedQty,
+                menuItemId,
+                nameSnapshot: row.name ?? "",
+                unitPrice: toMoneyString(row.numericPrice),
+              });
+            }
+          }
+        }
+
+        if (transactionItemsToInsert.length > 0) {
+          await tx.insert(transactionItems).values(transactionItemsToInsert);
+        }
+
         const batches = buildOrderBatches(remainingRows as OrderItemRow[], {
           omitFullyPaid: true,
         });
@@ -603,6 +634,35 @@ export async function POST(req: NextRequest) {
           orderId: order.id,
         })
         .returning();
+
+      // 写入交易明细行 (Full 模式：写入增量数量 = quantity - 原 paidQuantity)
+      const fullTransactionItems: Array<{
+        transactionId: string;
+        orderItemId: string;
+        quantity: number;
+        menuItemId: string;
+        nameSnapshot: string;
+        unitPrice: string;
+      }> = [];
+
+      for (const row of rows) {
+        const originalPaidQty = row.paidQuantity ?? 0;
+        const incrementQty = row.quantity - originalPaidQty;
+        if (incrementQty > 0) {
+          fullTransactionItems.push({
+            transactionId: transactionRow.id,
+            orderItemId: row.id,
+            quantity: incrementQty,
+            menuItemId: row.menuItemId,
+            nameSnapshot: row.name ?? "",
+            unitPrice: String(row.price),
+          });
+        }
+      }
+
+      if (fullTransactionItems.length > 0) {
+        await tx.insert(transactionItems).values(fullTransactionItems);
+      }
 
       await tx
         .update(restaurantTables)

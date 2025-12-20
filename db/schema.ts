@@ -136,6 +136,31 @@ export const transactions = pgTable(
   }),
 );
 
+// Transaction Items (结账明细行)
+export const transactionItems = pgTable(
+  "transaction_items",
+  {
+    id: uuid("id").default(sql`gen_random_uuid()`).primaryKey().notNull(),
+    transactionId: uuid("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    orderItemId: uuid("order_item_id")
+      .notNull()
+      .references(() => orderItems.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").notNull(),
+    menuItemId: uuid("menu_item_id")
+      .notNull()
+      .references(() => menuItems.id, { onDelete: "restrict" }),
+    nameSnapshot: text("name_snapshot").notNull(),
+    unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: false }).defaultNow().notNull(),
+  },
+  (t) => ({
+    transactionIdx: index("transaction_items_transaction_id_idx").on(t.transactionId),
+    orderItemIdx: index("transaction_items_order_item_id_idx").on(t.orderItemId),
+  }),
+);
+
 export const dailyClosures = pgTable(
   "daily_closures",
   {
@@ -263,6 +288,7 @@ export const schema = {
   orders,
   orderItems,
   transactions,
+  transactionItems,
   tableStatus,
   orderStatus,
   transactionType,
@@ -285,6 +311,8 @@ export type OrderItem = typeof orderItems.$inferSelect;
 export type NewOrderItem = typeof orderItems.$inferInsert;
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
+export type TransactionItem = typeof transactionItems.$inferSelect;
+export type NewTransactionItem = typeof transactionItems.$inferInsert;
 export type DailyClosure = typeof dailyClosures.$inferSelect;
 export type NewDailyClosure = typeof dailyClosures.$inferInsert;
 export type DailyClosureAdjustment = typeof dailyClosureAdjustments.$inferSelect;

@@ -19,6 +19,8 @@ import type {
   ReportsResponse,
   ReportGranularity,
   CheckoutHistoryResponse,
+  TransactionDetailResponse,
+  ReverseTransactionResponse,
 } from "@/types/api"
 
 export const api = {
@@ -30,6 +32,16 @@ export const api = {
   checkoutHistory: {
     list: ({ limit = 50 }: { limit?: number } = {}) =>
       fetcher<CheckoutHistoryResponse>(`/api/checkout-history?limit=${encodeURIComponent(String(limit))}`),
+  },
+
+  transactions: {
+    getDetail: (id: string) =>
+      fetcher<TransactionDetailResponse>(`/api/transactions/${encodeURIComponent(id)}`),
+
+    reverse: (id: string) =>
+      fetcher<ReverseTransactionResponse>(`/api/transactions/${encodeURIComponent(id)}/reverse`, {
+        method: "POST",
+      }),
   },
 
   dailyClosures: {

@@ -13,7 +13,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useCheckoutHistoryQuery } from "@/lib/queries"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  useCheckoutHistoryQuery,
+  useTransactionDetailQuery,
+  useReverseTransaction,
+} from "@/lib/queries"
 import { formatMoney } from "@/lib/money"
 
 type SelectedCheckout = {
@@ -24,9 +37,31 @@ export function CheckoutHistory() {
   const { data, isLoading, error, refetch } = useCheckoutHistoryQuery({ limit: 50 })
   const [selected, setSelected] = useState<SelectedCheckout | null>(null)
   const [reversalDialogOpen, setReversalDialogOpen] = useState(false)
+  const [reversalError, setReversalError] = useState<string | null>(null)
+
+  const { data: transactionDetail, isLoading: isDetailLoading, error: detailError } = useTransactionDetailQuery(
+    reversalDialogOpen ? selected?.transactionId ?? null : null
+  )
+  const detailErrorMessage = detailError instanceof Error ? detailError.message : null
+  const reverseMutation = useReverseTransaction()
 
   const items = useMemo(() => data?.items ?? [], [data?.items])
   const errorMessage = error instanceof Error ? error.message : null
+
+  const handleReverse = async () => {
+    if (!selected) return
+    setReversalError(null)
+
+    try {
+      await reverseMutation.mutateAsync(selected.transactionId)
+      setReversalDialogOpen(false)
+      setSelected(null)
+      refetch()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "反结算失败"
+      setReversalError(message)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -143,24 +178,80 @@ export function CheckoutHistory() {
           setReversalDialogOpen(open)
           if (!open) {
             setSelected(null)
+            setReversalError(null)
           }
         }}
       >
-        <DialogContent className="w-[50vmin] h-[50vmin] max-w-none sm:max-w-none">
+        <DialogContent className="w-[50vmin] h-[50vmin] max-w-none sm:max-w-none flex flex-col">
           <DialogHeader>
             <DialogTitle>反结算</DialogTitle>
-            <DialogDescription>请选择需要反结算的菜品</DialogDescription>
+            <DialogDescription>整单反结算将回退所有菜品的已付数量</DialogDescription>
           </DialogHeader>
 
-          <div className="text-sm text-muted-foreground">
-            {selected ? `结算ID：${selected.transactionId}` : ""}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {isDetailLoading ? (
+              <div className="space-y-2 p-4">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : detailErrorMessage ? (
+              <div className="p-4 text-center text-red-500">
+                加载失败：{detailErrorMessage}
+              </div>
+            ) : !transactionDetail?.hasItems ? (
+              <div className="p-4 text-center text-muted-foreground">
+                该结算单无法反结算（缺少明细）
+              </div>
+            ) : (
+              <ScrollArea className="h-full">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>菜品名称</TableHead>
+                      <TableHead className="text-right">数量</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
+                      // 按 menuItemId 聚合相同菜品的数量
+                      const aggregated = new Map<string, { name: string; quantity: number }>()
+                      for (const item of transactionDetail.items) {
+                        const key = item.menuItemId
+                        const existing = aggregated.get(key)
+                        if (existing) {
+                          existing.quantity += item.quantity
+                        } else {
+                          aggregated.set(key, { name: item.nameSnapshot, quantity: item.quantity })
+                        }
+                      }
+                      return Array.from(aggregated.entries()).map(([menuItemId, { name, quantity }]) => (
+                        <TableRow key={menuItemId}>
+                          <TableCell>{name}</TableCell>
+                          <TableCell className="text-right">{quantity}</TableCell>
+                        </TableRow>
+                      ))
+                    })()}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            )}
           </div>
 
-          <DialogFooter className="sm:justify-between">
-            <Button variant="secondary" disabled>
-              整单反结算
+          {reversalError && (
+            <div className="text-sm text-red-500 px-1">
+              {reversalError}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              onClick={handleReverse}
+              disabled={!transactionDetail?.hasItems || reverseMutation.isPending}
+            >
+              {reverseMutation.isPending ? "处理中..." : "整单反结算"}
             </Button>
-            <Button disabled>反结算</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
