@@ -50,6 +50,13 @@
       "when": 1765820801220,
       "tag": "0006_eager_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1766257075853,
+      "tag": "0007_handy_sentry",
+      "breakpoints": true
     }
   ]
 }

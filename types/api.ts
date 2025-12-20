@@ -155,6 +155,45 @@ export interface CheckoutHistoryResponse {
   items: CheckoutHistoryItem[]
 }
 
+// Transaction Detail Types
+export interface TransactionItemDetail {
+  id: string
+  orderItemId: string
+  quantity: number
+  menuItemId: string
+  nameSnapshot: string
+  unitPrice: number
+  createdAt: string
+}
+
+export interface TransactionDetail {
+  id: string
+  type: "income" | "expense"
+  category: string
+  amount: number
+  description: string | null
+  date: string
+  paymentMethod: string
+  orderId: string | null
+  createdAt: string
+  tableNumber: string | null
+}
+
+export interface TransactionDetailResponse {
+  transaction: TransactionDetail
+  items: TransactionItemDetail[]
+  hasItems: boolean
+}
+
+export interface ReverseTransactionResponse {
+  success: boolean
+  orderId: string
+  orderStatus: string
+  tableNumber: string | null
+  reversedAmount: number
+  newPaidAmount: number
+}
+
 // Daily Closure Types
 export type DailyClosurePaymentGroup = "cash" | "card" | "platform" | "other"
 export type DailyClosureAdjustmentType = "fee" | "rounding" | "other"

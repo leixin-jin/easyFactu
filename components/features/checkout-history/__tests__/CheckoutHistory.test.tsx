@@ -32,7 +32,7 @@ describe("CheckoutHistory", () => {
     const user = userEvent.setup()
     await user.click(screen.getAllByRole("button", { name: "反结算" })[0])
 
-    expect(await screen.findByText("请选择需要反结算的菜品")).toBeInTheDocument()
+    expect(await screen.findByText("整单反结算将回退所有菜品的已付数量")).toBeInTheDocument()
   })
 })
 
