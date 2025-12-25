@@ -3,11 +3,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
-import type { CreateMenuItemInput, MenuListResponse, MenuItemResponse } from "@/types/api"
+import type { CreateMenuItemInput, UpdateMenuItemInput, MenuListResponse, MenuItemResponse, DeletedMenuListResponse } from "@/types/api"
 
 export const menuKeys = {
   all: ["menuItems"] as const,
   list: () => [...menuKeys.all, "list"] as const,
+  deleted: () => [...menuKeys.all, "deleted"] as const,
 }
 
 export function useMenuQuery() {
@@ -18,11 +19,31 @@ export function useMenuQuery() {
   })
 }
 
+export function useDeletedMenuItems() {
+  return useQuery({
+    queryKey: menuKeys.deleted(),
+    queryFn: () => api.menuItems.listDeleted(),
+    staleTime: 30 * 1000, // 30 seconds
+  })
+}
+
 export function useCreateMenuItem() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (data: CreateMenuItemInput) => api.menuItems.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: menuKeys.all })
+    },
+  })
+}
+
+export function useUpdateMenuItem() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateMenuItemInput }) =>
+      api.menuItems.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: menuKeys.all })
     },
@@ -53,6 +74,33 @@ export function useDeleteMenuItem() {
     onError: (_err, _id, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(menuKeys.list(), context.previousData)
+      }
+    },
+  })
+}
+
+export function useRestoreMenuItem() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => api.menuItems.restore(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: menuKeys.all })
+    },
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: menuKeys.deleted() })
+      const previousData = queryClient.getQueryData<DeletedMenuListResponse>(menuKeys.deleted())
+
+      queryClient.setQueryData<DeletedMenuListResponse>(menuKeys.deleted(), (old) => {
+        if (!old) return old
+        return { items: old.items.filter((item: MenuItemResponse) => item.id !== id) }
+      })
+
+      return { previousData }
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(menuKeys.deleted(), context.previousData)
       }
     },
   })

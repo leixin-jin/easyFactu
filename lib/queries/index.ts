@@ -1,5 +1,13 @@
 export { tableKeys, useTablesQuery, useCreateTable, useDeleteTable } from "./use-tables"
-export { menuKeys, useMenuQuery, useCreateMenuItem, useDeleteMenuItem } from "./use-menu"
+export {
+  menuKeys,
+  useMenuQuery,
+  useDeletedMenuItems,
+  useCreateMenuItem,
+  useUpdateMenuItem,
+  useDeleteMenuItem,
+  useRestoreMenuItem,
+} from "./use-menu"
 export {
   orderKeys,
   useTableOrderQuery,
