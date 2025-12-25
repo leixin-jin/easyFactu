@@ -282,6 +282,26 @@ export const dailyClosureItemLines = pgTable(
   }),
 );
 
+// Restaurant Settings (餐厅设置)
+export const restaurantSettings = pgTable(
+  "restaurant_settings",
+  {
+    id: uuid("id").default(sql`gen_random_uuid()`).primaryKey().notNull(),
+    restaurantName: text("restaurant_name").notNull(),
+    address: text("address"),
+    phone: text("phone"),
+    email: text("email"),
+    taxRate: numeric("tax_rate", { precision: 5, scale: 4 }).notNull().default("0.1000"),
+    currency: text("currency").notNull().default("EUR"),
+    businessHours: text("business_hours"),
+    createdAt: timestamp("created_at", { withTimezone: false }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: false }).defaultNow().notNull(),
+  },
+  (t) => ({
+    updatedAtIdx: index("restaurant_settings_updated_at_idx").on(t.updatedAt),
+  }),
+);
+
 export const schema = {
   menuItems,
   restaurantTables,
@@ -299,6 +319,7 @@ export const schema = {
   dailyClosureItemLines,
   dailyClosureAdjustmentType,
   dailyClosurePaymentGroup,
+  restaurantSettings,
 };
 
 export type MenuItem = typeof menuItems.$inferSelect;
@@ -323,3 +344,5 @@ export type DailyClosureItemLine = typeof dailyClosureItemLines.$inferSelect;
 export type NewDailyClosureItemLine = typeof dailyClosureItemLines.$inferInsert;
 export type DailyClosureStateRow = typeof dailyClosureState.$inferSelect;
 export type NewDailyClosureStateRow = typeof dailyClosureState.$inferInsert;
+export type RestaurantSettings = typeof restaurantSettings.$inferSelect;
+export type NewRestaurantSettings = typeof restaurantSettings.$inferInsert;
