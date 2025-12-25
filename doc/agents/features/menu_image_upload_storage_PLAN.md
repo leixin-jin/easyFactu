@@ -2,7 +2,7 @@
 
 - ID: menu_image_upload_storage
 - Owner: Codex
-- Status: proposed
+- Status: completed
 
 ## Summary
 在菜单管理中支持菜品图片上传到 Supabase Storage。用户可在新增菜品时上传图片、在编辑菜品时更换或删除图片；图片 URL 写入 `menu_items.image` 字段。
@@ -61,13 +61,13 @@ USING (
 ```
 
 ## Acceptance Criteria
-- [ ] 图片上传支持 jpeg/png/webp/gif，大小 ≤ 5MB
-- [ ] 上传成功后写入公开访问 URL 到 `menu_items.image`
-- [ ] 新增菜品弹窗支持上传并预览图片
-- [ ] 编辑菜品弹窗支持预览、更换、删除图片
-- [ ] 删除图片会清空 `menu_items.image` 并移除 Storage 文件
-- [ ] 上传/删除失败时显示明确错误提示
-- [ ] UI 布局与现有弹窗尺寸一致
+- [x] 图片上传支持 jpeg/png/webp/gif，大小 ≤ 5MB
+- [x] 上传成功后写入公开访问 URL 到 `menu_items.image`
+- [x] 新增菜品弹窗支持上传并预览图片
+- [x] 编辑菜品弹窗支持预览、更换、删除图片
+- [x] 删除图片会清空 `menu_items.image` 并移除 Storage 文件
+- [x] 上传/删除失败时显示明确错误提示
+- [x] UI 布局与现有弹窗尺寸一致
 
 ## 任务清单（Tasks）
 开始前请阅读：

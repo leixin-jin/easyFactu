@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { ImageUpload } from "./ImageUpload"
 
 interface Category {
   id: string
@@ -109,6 +110,8 @@ export function MenuManagement() {
   const [editServerError, setEditServerError] = useState<string | null>(null)
   const [addSubmitting, setAddSubmitting] = useState(false)
   const [editSubmitting, setEditSubmitting] = useState(false)
+  const [addImageUploading, setAddImageUploading] = useState(false)
+  const [editImageUploading, setEditImageUploading] = useState(false)
 
   const [deleteSelection, setDeleteSelection] = useState("")
   const [deleteServerError, setDeleteServerError] = useState<string | null>(null)
@@ -331,7 +334,7 @@ export function MenuManagement() {
       // Calculate diff: only send changed fields
       // For nullable fields (nameEn, description, image): send empty string to clear to null
       const diff: Record<string, unknown> = {}
-      
+
       if (editForm.name.trim() !== editOriginalForm.name) {
         diff.name = editForm.name.trim()
       }
@@ -533,11 +536,10 @@ export function MenuManagement() {
               <button
                 key={category.id}
                 onClick={() => setSelectedCategory(category.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                  selectedCategory === category.id
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${selectedCategory === category.id
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
               >
                 <span>{category.name}</span>
                 <Badge variant="secondary" className="bg-muted text-muted-foreground">
@@ -729,12 +731,13 @@ export function MenuManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="menu-image">图片 URL 或相对路径</Label>
-                <Input
-                  id="menu-image"
-                  value={addForm.image}
-                  onChange={(e) => handleAddFieldChange("image", e.target.value)}
-                  placeholder="/images/dishes/salad.jpg"
+                <Label>菜品图片</Label>
+                <ImageUpload
+                  value={addForm.image || null}
+                  onChange={(url) => handleAddFieldChange("image", url ?? "")}
+                  onError={(error) => toast({ title: "图片上传失败", description: error, variant: "destructive" })}
+                  onUploadingChange={setAddImageUploading}
+                  disabled={addSubmitting}
                 />
               </div>
             </div>
@@ -743,9 +746,9 @@ export function MenuManagement() {
               <Button type="button" variant="outline" onClick={() => handleAddDialogToggle(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={addSubmitting}>
-                {addSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                提交
+              <Button type="submit" disabled={addSubmitting || addImageUploading}>
+                {(addSubmitting || addImageUploading) && <Loader2 className="w-4 h-4 animate-spin" />}
+                {addImageUploading ? "上传中..." : "提交"}
               </Button>
             </DialogFooter>
           </form>
@@ -843,12 +846,13 @@ export function MenuManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-menu-image">图片 URL 或相对路径</Label>
-                <Input
-                  id="edit-menu-image"
-                  value={editForm.image}
-                  onChange={(e) => handleEditFieldChange("image", e.target.value)}
-                  placeholder="/images/dishes/salad.jpg"
+                <Label>菜品图片</Label>
+                <ImageUpload
+                  value={editForm.image || null}
+                  onChange={(url) => handleEditFieldChange("image", url ?? "")}
+                  onError={(error) => toast({ title: "图片操作失败", description: error, variant: "destructive" })}
+                  onUploadingChange={setEditImageUploading}
+                  disabled={editSubmitting}
                 />
               </div>
             </div>
@@ -857,9 +861,9 @@ export function MenuManagement() {
               <Button type="button" variant="outline" onClick={() => handleEditDialogToggle(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={editSubmitting}>
-                {editSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                保存
+              <Button type="submit" disabled={editSubmitting || editImageUploading}>
+                {(editSubmitting || editImageUploading) && <Loader2 className="w-4 h-4 animate-spin" />}
+                {editImageUploading ? "上传中..." : "保存"}
               </Button>
             </DialogFooter>
           </form>
