@@ -5,6 +5,8 @@ import type {
   MenuListResponse,
   MenuItemResponse,
   CreateMenuItemInput,
+  UpdateMenuItemInput,
+  DeletedMenuListResponse,
   OrderResponse,
   CreateOrderInput,
   CheckoutInput,
@@ -82,15 +84,28 @@ export const api = {
   menuItems: {
     list: () => fetcher<MenuListResponse>("/api/menu-items"),
 
+    listDeleted: () => fetcher<DeletedMenuListResponse>("/api/menu-items/deleted"),
+
     create: (data: CreateMenuItemInput) =>
       fetcher<MenuItemResponse>("/api/menu-items", {
         method: "POST",
         body: data,
       }),
 
+    update: (id: string, data: UpdateMenuItemInput) =>
+      fetcher<MenuItemResponse>(`/api/menu-items/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: data,
+      }),
+
     delete: (id: string) =>
-      fetcher<void>(`/api/menu-items/${encodeURIComponent(id)}`, {
+      fetcher<MenuItemResponse>(`/api/menu-items/${encodeURIComponent(id)}`, {
         method: "DELETE",
+      }),
+
+    restore: (id: string) =>
+      fetcher<MenuItemResponse>(`/api/menu-items/${encodeURIComponent(id)}/restore`, {
+        method: "POST",
       }),
   },
 

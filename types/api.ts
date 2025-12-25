@@ -65,6 +65,19 @@ export interface CreateMenuItemInput {
   image?: string
 }
 
+export interface UpdateMenuItemInput {
+  name?: string
+  nameEn?: string
+  category?: string
+  price?: number
+  description?: string
+  image?: string
+}
+
+export interface DeletedMenuListResponse {
+  items: MenuItemResponse[]
+}
+
 // Order Types
 export type OrderStatus = "open" | "paid" | "cancelled"
 
