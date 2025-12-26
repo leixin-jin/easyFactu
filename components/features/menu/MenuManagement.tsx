@@ -299,7 +299,9 @@ export function MenuManagement() {
         return
       }
 
-      const created = await res.json().catch(() => null)
+      const result = await res.json().catch(() => null)
+      // 解包 { data } 响应结构
+      const created = result?.data ?? result
       toast({
         title: "菜品已添加",
         description: created?.name ? `${created.name} 已加入 ${created.category}` : "菜品已添加到菜单",
@@ -417,7 +419,9 @@ export function MenuManagement() {
         return
       }
 
-      const removed = await res.json().catch(() => null)
+      const result = await res.json().catch(() => null)
+      // 解包 { data } 响应结构
+      const removed = result?.data ?? result
       toast({
         title: "菜品已下架",
         description: removed?.name ? `${removed.name} 已下架` : "菜品已下架",

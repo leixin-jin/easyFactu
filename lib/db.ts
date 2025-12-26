@@ -1,19 +1,17 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "@/db/schema";
+import { getServerEnv } from "@/lib/env";
 
 declare global {
   var __drizzle_pool__: Pool | undefined;
 }
 
 function getPool() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is not set. Add it to your .env.local file.");
-  }
-
   if (!global.__drizzle_pool__) {
+    const serverEnv = getServerEnv();
     global.__drizzle_pool__ = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: serverEnv.DATABASE_URL,
       // For Supabase, the connection string usually has sslmode=require.
       // If needed, uncomment the next line to force TLS in some environments:
       // ssl: { rejectUnauthorized: false },

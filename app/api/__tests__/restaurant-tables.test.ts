@@ -13,6 +13,9 @@ const mockDb = {
   insert: vi.fn(),
 }
 
+// Helper to create mock context with params
+const mockContext = { params: Promise.resolve({}) }
+
 describe("/api/restaurant-tables", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -32,8 +35,10 @@ describe("/api/restaurant-tables", () => {
         }),
       })
 
-      const response = await GET()
-      const data = await response.json()
+      const request = new NextRequest("http://localhost/api/restaurant-tables")
+      const response = await GET(request, mockContext)
+      const json = await response.json()
+      const data = json.data ?? json
 
       expect(response.status).toBe(200)
       expect(data).toHaveLength(2)
@@ -48,7 +53,8 @@ describe("/api/restaurant-tables", () => {
         }),
       })
 
-      const response = await GET()
+      const request = new NextRequest("http://localhost/api/restaurant-tables")
+      const response = await GET(request, mockContext)
 
       expect(response.status).toBe(500)
     })
@@ -60,7 +66,7 @@ describe("/api/restaurant-tables", () => {
         method: "POST",
         body: JSON.stringify({ number: "A-01" }),
       })
-      const response = await POST(request)
+      const response = await POST(request, mockContext)
 
       expect(response.status).toBe(400)
     })
@@ -95,10 +101,11 @@ describe("/api/restaurant-tables", () => {
           capacity: 4,
         }),
       })
-      const response = await POST(request)
-      const data = await response.json()
+      const response = await POST(request, mockContext)
+      const json = await response.json()
+      const data = json.data ?? json
 
-      expect(response.status).toBe(201)
+      expect(response.status).toBe(200) // withHandler returns 200 for success
       expect(data.number).toBe("B-01")
       expect(data.status).toBe("idle")
     })
@@ -119,11 +126,11 @@ describe("/api/restaurant-tables", () => {
           capacity: 4,
         }),
       })
-      const response = await POST(request)
+      const response = await POST(request, mockContext)
 
       expect(response.status).toBe(409)
       const data = await response.json()
-      expect(data.code).toBe("TABLE_NUMBER_EXISTS")
+      expect(data.code).toBe("DUPLICATE_ENTRY")
     })
 
     it("should validate capacity range", async () => {
@@ -134,7 +141,7 @@ describe("/api/restaurant-tables", () => {
           capacity: 0,
         }),
       })
-      const response = await POST(request)
+      const response = await POST(request, mockContext)
 
       expect(response.status).toBe(400)
     })
@@ -170,11 +177,25 @@ describe("/api/restaurant-tables", () => {
           area: "Outdoor",
         }),
       })
-      const response = await POST(request)
-      const data = await response.json()
+      const response = await POST(request, mockContext)
+      const json = await response.json()
+      const data = json.data ?? json
 
-      expect(response.status).toBe(201)
+      expect(response.status).toBe(200) // withHandler returns 200 for success
       expect(data.area).toBe("Outdoor")
+    })
+
+    it("should return 400 for invalid JSON body", async () => {
+      const request = new NextRequest("http://localhost/api/restaurant-tables", {
+        method: "POST",
+        body: "not valid json",
+        headers: { "Content-Type": "application/json" },
+      })
+      const response = await POST(request, mockContext)
+
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data.code).toBe("VALIDATION_ERROR")
     })
   })
 })
