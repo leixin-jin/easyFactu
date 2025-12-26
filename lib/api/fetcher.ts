@@ -1,3 +1,6 @@
+/**
+ * API 客户端错误类
+ */
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -15,6 +18,15 @@ interface FetcherOptions extends Omit<RequestInit, "body"> {
   timeout?: number
 }
 
+/**
+ * 统一 API 请求函数
+ * 
+ * 特性：
+ * - 自动处理 JSON 序列化/反序列化
+ * - 支持请求超时
+ * - 统一错误处理，解析 { error, code, detail } 格式
+ * - 成功响应自动解包 { data } 结构
+ */
 export async function fetcher<T>(url: string, options: FetcherOptions = {}): Promise<T> {
   const { body, timeout = 30000, ...init } = options
 
@@ -35,15 +47,17 @@ export async function fetcher<T>(url: string, options: FetcherOptions = {}): Pro
 
     clearTimeout(timeoutId)
 
-    const data = await response.json().catch(() => null)
+    const payload = await response.json().catch(() => null)
 
     if (!response.ok) {
-      const errorMessage = data?.error ?? data?.message ?? `HTTP ${response.status}`
-      const errorCode = data?.code ?? `HTTP_${response.status}`
-      throw new ApiError(response.status, errorCode, errorMessage, data?.detail)
+      // 解析统一错误响应格式 { error, code, detail }
+      const errorMessage = payload?.error ?? payload?.message ?? `HTTP ${response.status}`
+      const errorCode = payload?.code ?? `HTTP_${response.status}`
+      throw new ApiError(response.status, errorCode, errorMessage, payload?.detail)
     }
 
-    return data as T
+    // 成功响应：解包 { data } 结构，兼容旧格式
+    return (payload?.data ?? payload) as T
   } catch (error) {
     clearTimeout(timeoutId)
 
@@ -61,3 +75,4 @@ export async function fetcher<T>(url: string, options: FetcherOptions = {}): Pro
     throw new ApiError(0, "UNKNOWN_ERROR", "未知错误")
   }
 }
+

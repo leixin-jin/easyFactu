@@ -1,170 +1,89 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { z } from "zod";
 
 import { getDb } from "@/lib/db";
 import { menuItems } from "@/db/schema";
 import { toMenuItemResponse, type MenuItemResponse } from "@/app/api/menu-items/utils";
 import { toMoneyString } from "@/lib/money";
+import { withHandler } from "@/lib/http";
+import { ConflictError, ValidationError } from "@/lib/http/errors";
+import { createMenuItemInputSchema } from "@/lib/contracts/menu";
 
-const decimalPattern = /^\d+(\.\d{1,2})?$/;
+/**
+ * GET /api/menu-items
+ * 
+ * 获取所有可用菜单项
+ */
+export const GET = withHandler(async () => {
+  const db = getDb();
 
-const coerceMoney = z
-  .union([
-    z
-      .string()
-      .trim()
-      .refine((value) => decimalPattern.test(value), {
-        message: "Amount must be numeric with up to two decimals",
-      })
-      .transform((value) => Number.parseFloat(value)),
-    z.number(),
-  ])
-  .transform((value) => (typeof value === "number" ? value : value));
+  const rows = await db
+    .select()
+    .from(menuItems)
+    .where(eq(menuItems.available, true));
 
-const createMenuItemSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  nameEn: z
-    .string()
-    .trim()
-    .max(120)
-    .optional()
-    .transform((value) => (value && value.length > 0 ? value : null)),
-  category: z.string().trim().min(1).max(120),
-  price: coerceMoney
-    .refine((value) => Number.isFinite(value) && value > 0, {
-      message: "Price must be greater than 0",
-    })
-    .refine((value) => hasAtMostTwoDecimals(value), {
-      message: "Price must have at most two decimals",
-    }),
-  description: z
-    .string()
-    .trim()
-    .max(500)
-    .optional()
-    .transform((value) => (value && value.length > 0 ? value : null)),
-  image: z
-    .string()
-    .trim()
-    .max(512)
-    .optional()
-    .transform((value) => (value && value.length > 0 ? value : null)),
+  const items = rows.map(toMenuItemResponse);
+  const categories = buildCategories(items);
+
+  return { categories, items };
 });
 
-function hasAtMostTwoDecimals(value: number): boolean {
-  if (!Number.isFinite(value)) return false;
-  const rounded = Math.round(value * 100) / 100;
-  return Math.abs(rounded - value) < 1e-6;
-}
-
-export async function GET() {
-  try {
-    const db = getDb();
-
-    const rows = await db
-      .select()
-      .from(menuItems)
-      .where(eq(menuItems.available, true));
-
-    const items = rows.map(toMenuItemResponse);
-    const categories = buildCategories(items);
-
-    return NextResponse.json({ categories, items }, { status: 200 });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("GET /api/menu-items error", err);
-    return NextResponse.json(
-      {
-        error: "Failed to load menu items",
-        detail: message,
-      },
-      { status: 500 },
-    );
-  }
-}
-
-export async function POST(req: NextRequest) {
+/**
+ * POST /api/menu-items
+ * 
+ * 创建新菜单项
+ */
+export const POST = withHandler(async (req: NextRequest) => {
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 },
-    );
+    throw new ValidationError("无效的 JSON 格式");
   }
 
-  const parseResult = createMenuItemSchema.safeParse(body);
+  const parseResult = createMenuItemInputSchema.safeParse(body);
   if (!parseResult.success) {
-    return NextResponse.json(
-      {
-        error: "Invalid request body",
-        detail: parseResult.error.flatten(),
-      },
-      { status: 400 },
-    );
+    throw new ValidationError("请求参数无效", parseResult.error.flatten());
   }
 
   const { name, nameEn, category, price, description, image } = parseResult.data;
 
-  try {
-    const db = getDb();
+  const db = getDb();
 
-    const [duplicate] = await db
-      .select({ id: menuItems.id })
-      .from(menuItems)
-      .where(
-        and(
-          eq(menuItems.name, name),
-          eq(menuItems.category, category),
-          eq(menuItems.available, true),
-        ),
-      )
-      .limit(1);
+  const [duplicate] = await db
+    .select({ id: menuItems.id })
+    .from(menuItems)
+    .where(
+      and(
+        eq(menuItems.name, name),
+        eq(menuItems.category, category),
+        eq(menuItems.available, true),
+      ),
+    )
+    .limit(1);
 
-    if (duplicate) {
-      return NextResponse.json(
-        {
-          error: "Menu item already exists in this category",
-          code: "MENU_ITEM_EXISTS",
-        },
-        { status: 409 },
-      );
-    }
-
-    const [created] = await db
-      .insert(menuItems)
-      .values({
-        name,
-        nameEn,
-        category,
-        price: toMoneyString(price),
-        description,
-        image,
-      })
-      .returning();
-
-    if (!created) {
-      return NextResponse.json(
-        { error: "Failed to create menu item" },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json(toMenuItemResponse(created), { status: 201 });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("POST /api/menu-items error", err);
-    return NextResponse.json(
-      {
-        error: "Failed to create menu item",
-        detail: message,
-      },
-      { status: 500 },
-    );
+  if (duplicate) {
+    throw new ConflictError("该分类下已存在同名菜品");
   }
-}
+
+  const [created] = await db
+    .insert(menuItems)
+    .values({
+      name,
+      nameEn,
+      category,
+      price: toMoneyString(price),
+      description,
+      image,
+    })
+    .returning();
+
+  if (!created) {
+    throw new Error("创建菜品失败");
+  }
+
+  return toMenuItemResponse(created);
+});
 
 function buildCategories(items: MenuItemResponse[]) {
   const counts = new Map<string, number>();

@@ -21,6 +21,9 @@ const mockDb = {
 const VALID_UUID = "12345678-1234-1234-1234-123456789012"
 const OTHER_UUID = "87654321-4321-4321-4321-210987654321"
 
+// Helper to create mock context with params
+const mockContext = { params: Promise.resolve({}) }
+
 describe("/api/menu-items", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -41,8 +44,10 @@ describe("/api/menu-items", () => {
         }),
       })
 
-      const response = await GET()
-      const data = await response.json()
+      const request = new NextRequest("http://localhost/api/menu-items")
+      const response = await GET(request, mockContext)
+      const json = await response.json()
+      const data = json.data ?? json
 
       expect(response.status).toBe(200)
       expect(data).toHaveProperty("items")
@@ -58,7 +63,8 @@ describe("/api/menu-items", () => {
         }),
       })
 
-      const response = await GET()
+      const request = new NextRequest("http://localhost/api/menu-items")
+      const response = await GET(request, mockContext)
 
       expect(response.status).toBe(500)
     })
@@ -70,11 +76,11 @@ describe("/api/menu-items", () => {
         method: "POST",
         body: JSON.stringify({ name: "Test" }),
       })
-      const response = await POST(request)
+      const response = await POST(request, mockContext)
 
       expect(response.status).toBe(400)
-      const data = await response.json()
-      expect(data).toHaveProperty("error")
+      const json = await response.json()
+      expect(json).toHaveProperty("error")
     })
 
     it("should create menu item with valid data", async () => {
@@ -111,10 +117,11 @@ describe("/api/menu-items", () => {
           price: 20,
         }),
       })
-      const response = await POST(request)
-      const data = await response.json()
+      const response = await POST(request, mockContext)
+      const json = await response.json()
+      const data = json.data ?? json
 
-      expect(response.status).toBe(201)
+      expect(response.status).toBe(200)
       expect(data.name).toBe("New Item")
     })
 
@@ -135,11 +142,11 @@ describe("/api/menu-items", () => {
           price: 20,
         }),
       })
-      const response = await POST(request)
+      const response = await POST(request, mockContext)
 
       expect(response.status).toBe(409)
       const data = await response.json()
-      expect(data.code).toBe("MENU_ITEM_EXISTS")
+      expect(data.code).toBe("DUPLICATE_ENTRY")
     })
 
     it("should reject invalid JSON body", async () => {
@@ -147,7 +154,7 @@ describe("/api/menu-items", () => {
         method: "POST",
         body: "not json",
       })
-      const response = await POST(request)
+      const response = await POST(request, mockContext)
 
       expect(response.status).toBe(400)
     })
@@ -161,7 +168,7 @@ describe("/api/menu-items", () => {
           price: -10,
         }),
       })
-      const response = await POST(request)
+      const response = await POST(request, mockContext)
 
       expect(response.status).toBe(400)
     })
@@ -343,11 +350,11 @@ describe("/api/menu-items", () => {
       }
 
       // After update, nullable fields should be null in DB
-      const updatedItem = { 
-        ...existingItem, 
-        nameEn: null, 
-        description: null, 
-        image: null 
+      const updatedItem = {
+        ...existingItem,
+        nameEn: null,
+        description: null,
+        image: null
       }
 
       // First call: check if item exists
@@ -378,10 +385,10 @@ describe("/api/menu-items", () => {
 
       const request = new NextRequest(`http://localhost/api/menu-items/${VALID_UUID}`, {
         method: "PUT",
-        body: JSON.stringify({ 
-          nameEn: "", 
-          description: "", 
-          image: "" 
+        body: JSON.stringify({
+          nameEn: "",
+          description: "",
+          image: ""
         }),
       })
       const response = await PUT(request, { params: Promise.resolve({ id: VALID_UUID }) })
