@@ -80,6 +80,32 @@ function parseServerEnv() {
 }
 
 /**
+ * 获取数据库连接 URL
+ * 
+ * 注意：此函数独立于客户端环境变量，仅校验 DATABASE_URL
+ * 适用于不需要 Supabase 配置的场景（如 CI、本地脚本等）
+ */
+export function getDatabaseUrl(): string {
+    if (typeof window !== 'undefined') {
+        throw new Error('DATABASE_URL 不能在客户端访问')
+    }
+
+    const url = process.env.DATABASE_URL
+    if (!url) {
+        throw new Error('DATABASE_URL 环境变量未设置')
+    }
+
+    // 简单校验 URL 格式
+    try {
+        new URL(url)
+    } catch {
+        throw new Error('DATABASE_URL 必须是有效的 URL')
+    }
+
+    return url
+}
+
+/**
  * 客户端环境变量（在客户端和服务端都可用）
  */
 export const clientEnv = parseClientEnv()
