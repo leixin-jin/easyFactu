@@ -1,11 +1,14 @@
 /**
  * 环境变量类型安全化模块
  * 
- * 使用 Zod 在模块加载时校验关键环境变量
+ * 使用 Zod 校验关键环境变量
  * 
  * 注意：此文件被拆分为客户端和服务端两部分
  * - 客户端变量：NEXT_PUBLIC_ 前缀，可在浏览器中访问
  * - 服务端变量：仅在服务端使用
+ * 
+ * 重要：所有校验都是延迟执行的，只在首次访问时进行
+ * 这样可以避免在构建时因环境变量未设置而失败
  */
 
 import { z } from 'zod'
@@ -27,10 +30,18 @@ const serverEnvSchema = z.object({
     DATABASE_URL: z.string().url('DATABASE_URL 必须是有效的 URL'),
 })
 
+// 缓存已解析的环境变量
+let cachedClientEnv: z.infer<typeof clientEnvSchema> | null = null
+
 /**
- * 解析客户端环境变量
+ * 获取客户端环境变量
+ * 延迟校验，首次调用时才进行验证
  */
-function parseClientEnv() {
+export function getClientEnv(): z.infer<typeof clientEnvSchema> {
+    if (cachedClientEnv) {
+        return cachedClientEnv
+    }
+
     const result = clientEnvSchema.safeParse({
         NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
@@ -45,7 +56,47 @@ function parseClientEnv() {
         throw new Error('客户端环境变量校验失败')
     }
 
-    return result.data
+    cachedClientEnv = result.data
+    return cachedClientEnv
+}
+
+/**
+ * 客户端环境变量（延迟求值）
+ * 
+ * 使用 Proxy 实现延迟校验，只有在实际访问属性时才会触发校验
+ * 这样可以避免在构建时因环境变量未设置而失败
+ */
+export const clientEnv = new Proxy({} as z.infer<typeof clientEnvSchema>, {
+    get(_target, prop: string) {
+        const env = getClientEnv()
+        return env[prop as keyof typeof env]
+    },
+})
+
+/**
+ * 获取数据库连接 URL
+ * 
+ * 注意：此函数独立于客户端环境变量，仅校验 DATABASE_URL
+ * 适用于不需要 Supabase 配置的场景（如 CI、本地脚本等）
+ */
+export function getDatabaseUrl(): string {
+    if (typeof window !== 'undefined') {
+        throw new Error('DATABASE_URL 不能在客户端访问')
+    }
+
+    const url = process.env.DATABASE_URL
+    if (!url) {
+        throw new Error('DATABASE_URL 环境变量未设置')
+    }
+
+    // 简单校验 URL 格式
+    try {
+        new URL(url)
+    } catch {
+        throw new Error('DATABASE_URL 必须是有效的 URL')
+    }
+
+    return url
 }
 
 /**
@@ -80,37 +131,6 @@ function parseServerEnv() {
 }
 
 /**
- * 获取数据库连接 URL
- * 
- * 注意：此函数独立于客户端环境变量，仅校验 DATABASE_URL
- * 适用于不需要 Supabase 配置的场景（如 CI、本地脚本等）
- */
-export function getDatabaseUrl(): string {
-    if (typeof window !== 'undefined') {
-        throw new Error('DATABASE_URL 不能在客户端访问')
-    }
-
-    const url = process.env.DATABASE_URL
-    if (!url) {
-        throw new Error('DATABASE_URL 环境变量未设置')
-    }
-
-    // 简单校验 URL 格式
-    try {
-        new URL(url)
-    } catch {
-        throw new Error('DATABASE_URL 必须是有效的 URL')
-    }
-
-    return url
-}
-
-/**
- * 客户端环境变量（在客户端和服务端都可用）
- */
-export const clientEnv = parseClientEnv()
-
-/**
  * 获取服务端环境变量
  * 仅在服务端调用，客户端调用会报错
  */
@@ -125,7 +145,7 @@ export function getServerEnv() {
     }
 
     return {
-        ...clientEnv,
+        ...getClientEnv(),
         ...serverVars,
     }
 }
