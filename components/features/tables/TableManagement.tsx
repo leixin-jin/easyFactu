@@ -32,6 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { tableStatusConfig as statusConfig } from "@/lib/constants"
 import { mockTablesFull as mockTables } from "@/lib/mocks"
+import { useCreateTable, useDeleteTable } from "@/lib/queries"
 
 export function TableManagement() {
   const router = useRouter()
@@ -42,11 +43,12 @@ export function TableManagement() {
   const [filterArea, setFilterArea] = useState<string>("all")
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [newTable, setNewTable] = useState({ number: "", area: "", capacity: "4" })
   const [deleteTargetId, setDeleteTargetId] = useState("")
   // reservation and locking features removed
+
+  const createTableMutation = useCreateTable()
+  const deleteTableMutation = useDeleteTable()
 
   const {
     loading,
@@ -94,30 +96,11 @@ export function TableManagement() {
     }
 
     try {
-      setCreating(true)
-      const res = await fetch("/api/restaurant-tables", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          number,
-          area: area || null,
-          capacity: capacityValue,
-        }),
+      await createTableMutation.mutateAsync({
+        number,
+        area: area || undefined,
+        capacity: capacityValue,
       })
-      const data = await res.json().catch(() => ({}))
-
-      if (!res.ok) {
-        const message =
-          data?.code === "TABLE_NUMBER_EXISTS"
-            ? "桌号已存在，请使用其他桌号。"
-            : data?.error || "创建桌台失败"
-        toast({
-          title: "创建失败",
-          description: message,
-          variant: "destructive",
-        })
-        return
-      }
 
       toast({
         title: "桌台已创建",
@@ -125,7 +108,6 @@ export function TableManagement() {
       })
       setCreateDialogOpen(false)
       setNewTable({ number: "", area: "", capacity: "4" })
-      await reload()
     } catch (err) {
       const message = err instanceof Error ? err.message : "未知错误"
       toast({
@@ -133,8 +115,6 @@ export function TableManagement() {
         description: message,
         variant: "destructive",
       })
-    } finally {
-      setCreating(false)
     }
   }
 
@@ -148,24 +128,7 @@ export function TableManagement() {
     }
 
     try {
-      setDeleting(true)
-      const res = await fetch(`/api/restaurant-tables/${deleteTargetId}`, {
-        method: "DELETE",
-      })
-      const data = await res.json().catch(() => ({}))
-
-      if (!res.ok) {
-        const message =
-          data?.code === "TABLE_HAS_OPEN_ORDER"
-            ? "该桌台有进行中的订单，无法删除。"
-            : data?.error || "删除桌台失败"
-        toast({
-          title: "删除失败",
-          description: message,
-          variant: "destructive",
-        })
-        return
-      }
+      await deleteTableMutation.mutateAsync(deleteTargetId)
 
       toast({
         title: "桌台已删除",
@@ -173,7 +136,6 @@ export function TableManagement() {
       })
       setDeleteDialogOpen(false)
       setDeleteTargetId("")
-      await reload()
     } catch (err) {
       const message = err instanceof Error ? err.message : "未知错误"
       toast({
@@ -181,8 +143,6 @@ export function TableManagement() {
         description: message,
         variant: "destructive",
       })
-    } finally {
-      setDeleting(false)
     }
   }
 
@@ -239,7 +199,7 @@ export function TableManagement() {
               className="pl-9"
             />
           </div>
-          <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as TableStatus | "all")}> 
+          <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as TableStatus | "all")}>
             <SelectTrigger className="w-full md:w-40">
               <SelectValue placeholder="状态筛选" />
             </SelectTrigger>
@@ -304,11 +264,10 @@ export function TableManagement() {
                   return (
                     <Card
                       key={table.id}
-                      className={`p-4 border-2 transition-all cursor-pointer hover:shadow-lg ${
-                        isOccupied
-                          ? "bg-destructive/25 border-destructive/50 hover:border-destructive"
-                          : "bg-card border-primary/30 hover:border-primary"
-                      }`}
+                      className={`p-4 border-2 transition-all cursor-pointer hover:shadow-lg ${isOccupied
+                        ? "bg-destructive/25 border-destructive/50 hover:border-destructive"
+                        : "bg-card border-primary/30 hover:border-primary"
+                        }`}
                       onClick={() => goToPOS(table)}
                     >
                       <div className="space-y-3">
@@ -367,9 +326,8 @@ export function TableManagement() {
                   return (
                     <tr
                       key={table.id}
-                      className={`border-b border-border transition-colors cursor-pointer ${
-                        isOccupied ? "bg-destructive/10 hover:bg-destructive/20" : "hover:bg-muted/30"
-                      }`}
+                      className={`border-b border-border transition-colors cursor-pointer ${isOccupied ? "bg-destructive/10 hover:bg-destructive/20" : "hover:bg-muted/30"
+                        }`}
                       onClick={() => goToPOS(table)}
                     >
                       <td className="p-4">
@@ -400,7 +358,7 @@ export function TableManagement() {
           setCreateDialogOpen(open)
           if (!open) {
             setNewTable({ number: "", area: "", capacity: "4" })
-            setCreating(false)
+            
           }
         }}
       >
@@ -417,7 +375,7 @@ export function TableManagement() {
                 placeholder="例如 A-01"
                 value={newTable.number}
                 onChange={(e) => setNewTable((prev) => ({ ...prev, number: e.target.value }))}
-                disabled={creating}
+                disabled={createTableMutation.isPending}
               />
             </div>
             <div className="space-y-2">
@@ -425,7 +383,7 @@ export function TableManagement() {
               <Select
                 value={newTable.area}
                 onValueChange={(value) => setNewTable((prev) => ({ ...prev, area: value }))}
-                disabled={creating}
+                disabled={createTableMutation.isPending}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="选择已有区域" />
@@ -445,7 +403,7 @@ export function TableManagement() {
                 placeholder="例如 大厅A区"
                 value={newTable.area}
                 onChange={(e) => setNewTable((prev) => ({ ...prev, area: e.target.value }))}
-                disabled={creating}
+                disabled={createTableMutation.isPending}
               />
             </div>
             <div className="space-y-2">
@@ -456,7 +414,7 @@ export function TableManagement() {
                 min={1}
                 value={newTable.capacity}
                 onChange={(e) => setNewTable((prev) => ({ ...prev, capacity: e.target.value }))}
-                disabled={creating}
+                disabled={createTableMutation.isPending}
               />
             </div>
           </div>
@@ -468,12 +426,12 @@ export function TableManagement() {
                 setCreateDialogOpen(false)
                 setNewTable({ number: "", area: "", capacity: "4" })
               }}
-              disabled={creating}
+              disabled={createTableMutation.isPending}
             >
               取消
             </Button>
-            <Button type="button" onClick={handleCreateTable} disabled={creating}>
-              {creating ? "创建中..." : "确认创建"}
+            <Button type="button" onClick={handleCreateTable} disabled={createTableMutation.isPending}>
+              {createTableMutation.isPending ? "创建中..." : "确认创建"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -485,7 +443,7 @@ export function TableManagement() {
           setDeleteDialogOpen(open)
           if (!open) {
             setDeleteTargetId("")
-            setDeleting(false)
+            
           }
         }}
       >
@@ -497,7 +455,7 @@ export function TableManagement() {
           <div className="space-y-3 py-2">
             <div className="space-y-2">
               <Label>桌台</Label>
-              <Select value={deleteTargetId} onValueChange={setDeleteTargetId} disabled={deleting}>
+              <Select value={deleteTargetId} onValueChange={setDeleteTargetId} disabled={deleteTableMutation.isPending}>
                 <SelectTrigger>
                   <SelectValue placeholder="选择桌台" />
                 </SelectTrigger>
@@ -523,12 +481,12 @@ export function TableManagement() {
                 setDeleteDialogOpen(false)
                 setDeleteTargetId("")
               }}
-              disabled={deleting}
+              disabled={deleteTableMutation.isPending}
             >
               取消
             </Button>
-            <Button type="button" variant="destructive" onClick={handleDeleteTable} disabled={deleting}>
-              {deleting ? "删除中..." : "确认删除"}
+            <Button type="button" variant="destructive" onClick={handleDeleteTable} disabled={deleteTableMutation.isPending}>
+              {deleteTableMutation.isPending ? "删除中..." : "确认删除"}
             </Button>
           </DialogFooter>
         </DialogContent>

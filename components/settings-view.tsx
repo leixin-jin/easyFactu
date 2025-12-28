@@ -12,17 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Store, Printer, Save, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-
-type SettingsData = {
-  id: string | null
-  restaurantName: string
-  address: string | null
-  phone: string | null
-  email: string | null
-  taxRate: string
-  currency: string
-  businessHours: string | null
-}
+import { useRestaurantSettingsQuery, useUpdateRestaurantSettings } from "@/lib/queries"
 
 export function SettingsView() {
   // Basic information state
@@ -39,45 +29,37 @@ export function SettingsView() {
   const [printKitchen, setPrintKitchen] = useState(true)
   const [printReceipt, setPrintReceipt] = useState(true)
 
-  // Loading states
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-
   const { toast } = useToast()
 
-  // Fetch settings on mount
+  // Use TanStack Query for fetching settings
+  const { data: settingsData, isLoading, error: queryError } = useRestaurantSettingsQuery()
+  const updateSettingsMutation = useUpdateRestaurantSettings()
+
+  // Populate form when data is loaded
   useEffect(() => {
-    async function fetchSettings() {
-      try {
-        const response = await fetch("/api/restaurant-settings")
-        if (!response.ok) {
-          throw new Error("Failed to fetch settings")
-        }
-        const data: SettingsData = await response.json()
-
-        setRestaurantName(data.restaurantName || "")
-        setAddress(data.address || "")
-        setPhone(data.phone || "")
-        setEmail(data.email || "")
-        // Convert tax rate from decimal (0.1000) to percentage (10)
-        const taxRatePercent = (parseFloat(data.taxRate) * 100).toString()
-        setTaxRate(taxRatePercent)
-        setCurrency(data.currency || "EUR")
-        setBusinessHours(data.businessHours || "")
-      } catch (error) {
-        console.error("Failed to fetch settings:", error)
-        toast({
-          title: "加载失败",
-          description: "无法加载设置信息，请刷新页面重试",
-          variant: "destructive",
-        })
-      } finally {
-        setIsLoading(false)
-      }
+    if (settingsData) {
+      setRestaurantName(settingsData.restaurantName || "")
+      setAddress(settingsData.address || "")
+      setPhone(settingsData.phone || "")
+      setEmail(settingsData.email || "")
+      // Convert tax rate from decimal (0.1000) to percentage (10)
+      const taxRatePercent = (parseFloat(settingsData.taxRate) * 100).toString()
+      setTaxRate(taxRatePercent)
+      setCurrency(settingsData.currency || "EUR")
+      setBusinessHours(settingsData.businessHours || "")
     }
+  }, [settingsData])
 
-    fetchSettings()
-  }, [toast])
+  // Show error toast when query fails
+  useEffect(() => {
+    if (queryError) {
+      toast({
+        title: "加载失败",
+        description: "无法加载设置信息，请刷新页面重试",
+        variant: "destructive",
+      })
+    }
+  }, [queryError, toast])
 
   const handleSave = async () => {
     // Validate required fields
@@ -90,32 +72,19 @@ export function SettingsView() {
       return
     }
 
-    setIsSaving(true)
-
     try {
       // Convert tax rate from percentage (10) to decimal (0.1000)
       const taxRateDecimal = (parseFloat(taxRate) / 100).toFixed(4)
 
-      const response = await fetch("/api/restaurant-settings", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          restaurantName: restaurantName.trim(),
-          address: address.trim() || null,
-          phone: phone.trim() || null,
-          email: email.trim() || null,
-          taxRate: taxRateDecimal,
-          currency,
-          businessHours: businessHours.trim() || null,
-        }),
+      await updateSettingsMutation.mutateAsync({
+        restaurantName: restaurantName.trim(),
+        address: address.trim() || null,
+        phone: phone.trim() || null,
+        email: email.trim() || null,
+        taxRate: taxRateDecimal,
+        currency,
+        businessHours: businessHours.trim() || null,
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to save settings")
-      }
 
       toast({
         title: "保存成功",
@@ -128,8 +97,6 @@ export function SettingsView() {
         description: error instanceof Error ? error.message : "无法保存设置信息，请重试",
         variant: "destructive",
       })
-    } finally {
-      setIsSaving(false)
     }
   }
 
@@ -149,13 +116,13 @@ export function SettingsView() {
           <h1 className="text-3xl font-bold text-foreground text-balance">系统设置</h1>
           <p className="text-muted-foreground mt-1">配置餐厅信息和系统参数</p>
         </div>
-        <Button className="gap-2" onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
+        <Button className="gap-2" onClick={handleSave} disabled={updateSettingsMutation.isPending}>
+          {updateSettingsMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <Save className="w-4 h-4" />
           )}
-          {isSaving ? "保存中..." : "保存设置"}
+          {updateSettingsMutation.isPending ? "保存中..." : "保存设置"}
         </Button>
       </div>
 

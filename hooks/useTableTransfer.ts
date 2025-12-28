@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react"
 
 import { useToast } from "@/hooks/use-toast"
+import { useTransferOrder } from "@/lib/queries"
 import type { CurrentOrderSummary, OrderBatchView } from "@/types/pos"
 
 interface TransferItemInput {
@@ -31,7 +32,6 @@ interface UseTableTransferOptions {
 }
 
 interface TransferArgs {
-  mode: "split" | "merge"
   sourceTableId: string
   targetTableId: string
   items: TransferItemInput[]
@@ -41,48 +41,38 @@ interface TransferArgs {
 export function useTableTransfer(options: UseTableTransferOptions) {
   const { selectedTableId, applyOrderState, reloadTables, setOrderError } = options
   const { toast } = useToast()
+  const transferMutation = useTransferOrder()
   const [splitLoading, setSplitLoading] = useState(false)
   const [mergeLoading, setMergeLoading] = useState(false)
 
   const runTransfer = useCallback(
-    async (args: TransferArgs) => {
-      const { mode } = args
+    async (args: TransferArgs & { mode: "split" | "merge" }) => {
+      const { mode, sourceTableId, targetTableId, items, moveAll } = args
       const setLoading = mode === "split" ? setSplitLoading : setMergeLoading
       setLoading(true)
       setOrderError(null)
       try {
-        const res = await fetch("/api/orders/transfer", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(args),
+        const payload = await transferMutation.mutateAsync({
+          mode,
+          sourceTableId,
+          targetTableId,
+          items: items.map((item) => ({ orderItemId: item.orderItemId, quantity: item.quantity })),
+          moveAll,
         })
-        const data: TransferResponsePayload | { error?: string; code?: string } | null =
-          await res.json().catch(() => null)
 
-        if (!res.ok) {
-          const message =
-            (data && "error" in data && typeof data.error === "string" && data.error) ||
-            `操作失败 (${res.status})`
-          toast({
-            title: mode === "split" ? "拆台失败" : "并台失败",
-            description: message,
-            variant: "destructive",
-          })
-          setOrderError(message)
-          return null
-        }
-
-        const payload = data as TransferResponsePayload
-        if (payload.source && payload.source.tableId === selectedTableId) {
+        // Handle the response - the mutation onSuccess already invalidates queries
+        // but we may need to update local state
+        const data = payload as unknown as TransferResponsePayload
+        if (data?.source && data.source.tableId === selectedTableId) {
           applyOrderState({
-            order: payload.source.order ?? null,
-            batches: payload.source.batches ?? [],
+            order: data.source.order ?? null,
+            batches: data.source.batches ?? [],
           })
         }
-        if (payload.target && payload.target.tableId === selectedTableId) {
+        if (data?.target && data.target.tableId === selectedTableId) {
           applyOrderState({
-            order: payload.target.order ?? null,
-            batches: payload.target.batches ?? [],
+            order: data.target.order ?? null,
+            batches: data.target.batches ?? [],
           })
         }
 
@@ -107,16 +97,16 @@ export function useTableTransfer(options: UseTableTransferOptions) {
         setLoading(false)
       }
     },
-    [applyOrderState, reloadTables, selectedTableId, setOrderError, toast],
+    [applyOrderState, reloadTables, selectedTableId, setOrderError, toast, transferMutation],
   )
 
   const split = useCallback(
-    (args: Omit<TransferArgs, "mode">) => runTransfer({ ...args, mode: "split" }),
+    (args: TransferArgs) => runTransfer({ ...args, mode: "split" }),
     [runTransfer],
   )
 
   const merge = useCallback(
-    (args: Omit<TransferArgs, "mode">) => runTransfer({ ...args, mode: "merge" }),
+    (args: TransferArgs) => runTransfer({ ...args, mode: "merge" }),
     [runTransfer],
   )
 

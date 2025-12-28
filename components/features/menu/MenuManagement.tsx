@@ -2,10 +2,9 @@
 
 import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
-import { Archive, Loader2, Minus, Pencil, Plus, Search, RotateCcw } from "lucide-react"
+import { Loader2, Minus, Pencil, Plus, Search } from "lucide-react"
 
-import { useMenuData } from "@/hooks/useMenuData"
-import { useDeletedMenuItems, useUpdateMenuItem, useRestoreMenuItem } from "@/lib/queries"
+import { useMenuData, type UIMenuItem } from "@/hooks/useMenuData"
 import { useToast } from "@/hooks/use-toast"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,18 +18,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ImageUpload } from "./ImageUpload"
+import { ImageUpload } from "@/components/features/menu/ImageUpload"
+import { useCreateMenuItem, useDeleteMenuItem, useUpdateMenuItem } from "@/lib/queries"
 
 interface Category {
   id: string
@@ -60,7 +53,16 @@ const createEmptyForm = (category?: string): MenuForm => ({
   image: "",
 })
 
-const validateForm = (form: MenuForm): MenuFormErrors => {
+const createFormFromItem = (item: UIMenuItem): MenuForm => ({
+  name: item.name ?? "",
+  nameEn: item.nameEn ?? "",
+  category: item.category ?? "",
+  price: Number.isFinite(item.price) ? String(item.price) : "",
+  description: item.description ?? "",
+  image: item.image ?? "",
+})
+
+const validateMenuForm = (form: MenuForm): MenuFormErrors => {
   const errors: MenuFormErrors = {}
 
   if (!form.name.trim()) {
@@ -86,39 +88,33 @@ const validateForm = (form: MenuForm): MenuFormErrors => {
 export function MenuManagement() {
   const { toast } = useToast()
   const { items: fetchedItems, loading: menuLoading, error: menuError, refresh } = useMenuData()
-  const { data: deletedData, isLoading: deletedLoading, error: deletedError, refetch: refetchDeleted } = useDeletedMenuItems()
-  const updateMutation = useUpdateMenuItem()
-  const restoreMutation = useRestoreMenuItem()
 
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
 
   const [addDialogOpen, setAddDialogOpen] = useState(false)
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletedSheetOpen, setDeletedSheetOpen] = useState(false)
 
   const [addForm, setAddForm] = useState<MenuForm>(createEmptyForm())
-  const [editForm, setEditForm] = useState<MenuForm>(createEmptyForm())
-  const [editOriginalForm, setEditOriginalForm] = useState<MenuForm>(createEmptyForm()) // Track original values
-  const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [customCategory, setCustomCategory] = useState("")
-  const [editCustomCategory, setEditCustomCategory] = useState("")
   const [addErrors, setAddErrors] = useState<MenuFormErrors>({})
-  const [editErrors, setEditErrors] = useState<MenuFormErrors>({})
   const [addServerError, setAddServerError] = useState<string | null>(null)
+  const [addUploading, setAddUploading] = useState(false)
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<UIMenuItem | null>(null)
+  const [editForm, setEditForm] = useState<MenuForm>(createEmptyForm())
+  const [editCustomCategory, setEditCustomCategory] = useState("")
+  const [editErrors, setEditErrors] = useState<MenuFormErrors>({})
   const [editServerError, setEditServerError] = useState<string | null>(null)
-  const [addSubmitting, setAddSubmitting] = useState(false)
-  const [editSubmitting, setEditSubmitting] = useState(false)
-  const [addImageUploading, setAddImageUploading] = useState(false)
-  const [editImageUploading, setEditImageUploading] = useState(false)
+  const [editUploading, setEditUploading] = useState(false)
 
   const [deleteSelection, setDeleteSelection] = useState("")
   const [deleteServerError, setDeleteServerError] = useState<string | null>(null)
-  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
 
-  // Track which item is currently being restored (for per-item loading state)
-  const [restoringItemId, setRestoringItemId] = useState<string | null>(null)
+  const createMenuItemMutation = useCreateMenuItem()
+  const updateMenuItemMutation = useUpdateMenuItem()
+  const deleteMenuItemMutation = useDeleteMenuItem()
 
   const categories = useMemo<Category[]>(() => {
     const counts = new Map<string, number>()
@@ -157,8 +153,6 @@ export function MenuManagement() {
     [fetchedItems],
   )
 
-  const deletedItems = deletedData?.items ?? []
-
   const stats = useMemo(
     () => ({
       total: fetchedItems.length,
@@ -172,32 +166,17 @@ export function MenuManagement() {
   )
 
   const selectedExistingCategory = categorySuggestions.includes(addForm.category) ? addForm.category : ""
-  const editSelectedExistingCategory = categorySuggestions.includes(editForm.category) ? editForm.category : ""
+  const selectedEditCategory = categorySuggestions.includes(editForm.category) ? editForm.category : ""
+  const addSubmitting = createMenuItemMutation.isPending || addUploading
+  const editSubmitting = updateMenuItemMutation.isPending || editUploading
 
   const openAddDialog = () => {
     setAddForm(createEmptyForm(selectedCategory))
     setCustomCategory("")
     setAddErrors({})
     setAddServerError(null)
+    setAddUploading(false)
     setAddDialogOpen(true)
-  }
-
-  const openEditDialog = (item: typeof fetchedItems[0]) => {
-    const formData: MenuForm = {
-      name: item.name,
-      nameEn: item.nameEn ?? "",
-      category: item.category,
-      price: item.price.toFixed(2),
-      description: item.description ?? "",
-      image: item.image ?? "",
-    }
-    setEditingItemId(item.id)
-    setEditForm(formData)
-    setEditOriginalForm(formData) // Store original values for diff
-    setEditCustomCategory("")
-    setEditErrors({})
-    setEditServerError(null)
-    setEditDialogOpen(true)
   }
 
   const handleAddDialogToggle = (open: boolean) => {
@@ -207,20 +186,7 @@ export function MenuManagement() {
       setCustomCategory("")
       setAddErrors({})
       setAddServerError(null)
-      setAddSubmitting(false)
-    }
-  }
-
-  const handleEditDialogToggle = (open: boolean) => {
-    setEditDialogOpen(open)
-    if (!open) {
-      setEditingItemId(null)
-      setEditForm(createEmptyForm())
-      setEditOriginalForm(createEmptyForm())
-      setEditCustomCategory("")
-      setEditErrors({})
-      setEditServerError(null)
-      setEditSubmitting(false)
+      setAddUploading(false)
     }
   }
 
@@ -229,7 +195,28 @@ export function MenuManagement() {
     if (!open) {
       setDeleteSelection("")
       setDeleteServerError(null)
-      setDeleteSubmitting(false)
+    }
+  }
+
+  const openEditDialog = (item: UIMenuItem) => {
+    setEditTarget(item)
+    setEditForm(createFormFromItem(item))
+    setEditCustomCategory("")
+    setEditErrors({})
+    setEditServerError(null)
+    setEditUploading(false)
+    setEditDialogOpen(true)
+  }
+
+  const handleEditDialogToggle = (open: boolean) => {
+    setEditDialogOpen(open)
+    if (!open) {
+      setEditTarget(null)
+      setEditForm(createEmptyForm())
+      setEditCustomCategory("")
+      setEditErrors({})
+      setEditServerError(null)
+      setEditUploading(false)
     }
   }
 
@@ -246,14 +233,14 @@ export function MenuManagement() {
     handleAddFieldChange("category", value)
   }
 
-  const handleEditCategorySelect = (value: string) => {
-    setEditCustomCategory("")
-    handleEditFieldChange("category", value)
-  }
-
   const handleCustomCategoryChange = (value: string) => {
     setCustomCategory(value)
     handleAddFieldChange("category", value)
+  }
+
+  const handleEditCategorySelect = (value: string) => {
+    setEditCustomCategory("")
+    handleEditFieldChange("category", value)
   }
 
   const handleEditCustomCategoryChange = (value: string) => {
@@ -263,51 +250,34 @@ export function MenuManagement() {
 
   const handleAddSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
-    const errors = validateForm(addForm)
+    if (addUploading) {
+      toast({
+        title: "图片上传中",
+        description: "请等待图片上传完成后再提交。",
+        variant: "destructive",
+      })
+      return
+    }
+    const errors = validateMenuForm(addForm)
     setAddErrors(errors)
     if (Object.keys(errors).length > 0) return
 
     try {
-      setAddSubmitting(true)
       setAddServerError(null)
 
-      const payload: Record<string, unknown> = {
+      const created = await createMenuItemMutation.mutateAsync({
         name: addForm.name.trim(),
+        nameEn: addForm.nameEn.trim() || undefined,
         category: addForm.category.trim(),
-        price: addForm.price.trim(),
-      }
-
-      if (addForm.nameEn.trim()) payload.nameEn = addForm.nameEn.trim()
-      if (addForm.description.trim()) payload.description = addForm.description.trim()
-      if (addForm.image.trim()) payload.image = addForm.image.trim()
-
-      const res = await fetch("/api/menu-items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        price: parseFloat(addForm.price.trim()),
+        description: addForm.description.trim() || undefined,
+        image: addForm.image.trim() || undefined,
       })
-
-      if (!res.ok) {
-        const detail = await res.json().catch(() => null)
-        const errorMessage = detail?.detail ?? detail?.error ?? "添加菜品失败"
-        setAddServerError(typeof errorMessage === "string" ? errorMessage : "添加菜品失败")
-        toast({
-          title: "添加菜品失败",
-          description: typeof errorMessage === "string" ? errorMessage : "请稍后再试",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const result = await res.json().catch(() => null)
-      // 解包 { data } 响应结构
-      const created = result?.data ?? result
       toast({
         title: "菜品已添加",
         description: created?.name ? `${created.name} 已加入 ${created.category}` : "菜品已添加到菜单",
       })
       handleAddDialogToggle(false)
-      refresh()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "添加菜品失败"
       setAddServerError(message)
@@ -316,67 +286,46 @@ export function MenuManagement() {
         description: message,
         variant: "destructive",
       })
-    } finally {
-      setAddSubmitting(false)
     }
   }
 
   const handleEditSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
-    if (!editingItemId) return
+    if (!editTarget) {
+      setEditServerError("请选择要编辑的菜品")
+      return
+    }
+    if (editUploading) {
+      toast({
+        title: "图片上传中",
+        description: "请等待图片上传完成后再提交。",
+        variant: "destructive",
+      })
+      return
+    }
 
-    const errors = validateForm(editForm)
+    const errors = validateMenuForm(editForm)
     setEditErrors(errors)
     if (Object.keys(errors).length > 0) return
 
     try {
-      setEditSubmitting(true)
       setEditServerError(null)
 
-      // Calculate diff: only send changed fields
-      // For nullable fields (nameEn, description, image): send empty string to clear to null
-      const diff: Record<string, unknown> = {}
-
-      if (editForm.name.trim() !== editOriginalForm.name) {
-        diff.name = editForm.name.trim()
-      }
-      if (editForm.nameEn.trim() !== editOriginalForm.nameEn) {
-        // Send empty string to clear, or the new value
-        diff.nameEn = editForm.nameEn.trim()
-      }
-      if (editForm.category.trim() !== editOriginalForm.category) {
-        diff.category = editForm.category.trim()
-      }
-      if (editForm.price.trim() !== editOriginalForm.price) {
-        diff.price = Number.parseFloat(editForm.price.trim())
-      }
-      if (editForm.description.trim() !== editOriginalForm.description) {
-        // Send empty string to clear, or the new value
-        diff.description = editForm.description.trim()
-      }
-      if (editForm.image.trim() !== editOriginalForm.image) {
-        // Send empty string to clear, or the new value
-        diff.image = editForm.image.trim()
-      }
-
-      // If no changes, just close the dialog
-      if (Object.keys(diff).length === 0) {
-        toast({
-          title: "无变更",
-          description: "未检测到任何修改",
-        })
-        handleEditDialogToggle(false)
-        return
-      }
-
-      await updateMutation.mutateAsync({
-        id: editingItemId,
-        data: diff,
+      const updated = await updateMenuItemMutation.mutateAsync({
+        id: editTarget.id,
+        data: {
+          name: editForm.name.trim(),
+          nameEn: editForm.nameEn.trim(),
+          category: editForm.category.trim(),
+          price: parseFloat(editForm.price.trim()),
+          description: editForm.description.trim(),
+          image: editForm.image.trim(),
+        },
       })
 
       toast({
         title: "菜品已更新",
-        description: `${editForm.name} 已成功更新`,
+        description: updated?.name ? `${updated.name} 已更新` : "菜品信息已更新",
       })
       handleEditDialogToggle(false)
     } catch (err: unknown) {
@@ -387,83 +336,37 @@ export function MenuManagement() {
         description: message,
         variant: "destructive",
       })
-    } finally {
-      setEditSubmitting(false)
     }
   }
 
   const handleDeleteSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
     if (!deleteSelection) {
-      setDeleteServerError("请选择要下架的菜品")
+      setDeleteServerError("请选择要删除的菜品")
       return
     }
 
     try {
-      setDeleteSubmitting(true)
       setDeleteServerError(null)
 
-      const res = await fetch(`/api/menu-items/${deleteSelection}`, {
-        method: "DELETE",
-      })
-
-      if (!res.ok) {
-        const detail = await res.json().catch(() => null)
-        const errorMessage = detail?.detail ?? detail?.error ?? "下架失败"
-        setDeleteServerError(typeof errorMessage === "string" ? errorMessage : "下架失败")
-        toast({
-          title: "下架菜品失败",
-          description: typeof errorMessage === "string" ? errorMessage : "请稍后再试",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const result = await res.json().catch(() => null)
-      // 解包 { data } 响应结构
-      const removed = result?.data ?? result
+      const removed = await deleteMenuItemMutation.mutateAsync(deleteSelection)
       toast({
-        title: "菜品已下架",
-        description: removed?.name ? `${removed.name} 已下架` : "菜品已下架",
+        title: "菜品已删除",
+        description: removed?.name ? `${removed.name} 已标记为下架` : "菜品已隐藏",
       })
       handleDeleteDialogToggle(false)
-      refresh()
-      refetchDeleted()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "下架菜品失败"
+      const message = err instanceof Error ? err.message : "删除菜品失败"
       setDeleteServerError(message)
       toast({
-        title: "下架菜品失败",
+        title: "删除菜品失败",
         description: message,
         variant: "destructive",
       })
-    } finally {
-      setDeleteSubmitting(false)
-    }
-  }
-
-  const handleRestore = async (itemId: string, itemName: string) => {
-    setRestoringItemId(itemId)
-    try {
-      await restoreMutation.mutateAsync(itemId)
-      toast({
-        title: "菜品已恢复上架",
-        description: `${itemName} 已恢复上架`,
-      })
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "恢复上架失败"
-      toast({
-        title: "恢复上架失败",
-        description: message,
-        variant: "destructive",
-      })
-    } finally {
-      setRestoringItemId(null)
     }
   }
 
   const hasMenuError = Boolean(menuError)
-  const hasDeletedError = Boolean(deletedError)
 
   return (
     <div className="space-y-6">
@@ -485,15 +388,7 @@ export function MenuManagement() {
             disabled={fetchedItems.length === 0}
           >
             <Minus className="w-4 h-4 mr-2" />
-            下架菜品
-          </Button>
-          <Button
-            className="flex-1 sm:flex-none"
-            variant="outline"
-            onClick={() => setDeletedSheetOpen(true)}
-          >
-            <Archive className="w-4 h-4 mr-2" />
-            已下架菜品
+            删除菜品
           </Button>
         </div>
       </div>
@@ -578,19 +473,8 @@ export function MenuManagement() {
                   filteredItems.map((item) => (
                     <Card
                       key={item.id}
-                      className="p-4 bg-muted/30 border-border hover:border-primary/50 transition-colors relative"
+                      className="p-4 bg-muted/30 border-border hover:border-primary/50 transition-colors"
                     >
-                      {/* Edit button */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-2 right-2 h-8 w-8"
-                        onClick={() => openEditDialog(item)}
-                      >
-                        <Pencil className="w-4 h-4" />
-                        <span className="sr-only">编辑</span>
-                      </Button>
-
                       <div className="flex gap-4">
                         {/* Image */}
                         <div className="w-24 h-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
@@ -613,8 +497,8 @@ export function MenuManagement() {
                         </div>
 
                         {/* Content */}
-                        <div className="flex-1 min-w-0 pr-8">
-                          <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-3 mb-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold text-foreground">{item.name}</h3>
@@ -624,7 +508,18 @@ export function MenuManagement() {
                                 <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
                               )}
                             </div>
-                            <p className="text-lg font-bold text-primary whitespace-nowrap">€{item.price.toFixed(2)}</p>
+                            <div className="flex flex-col items-end gap-2">
+                              <p className="text-lg font-bold text-primary whitespace-nowrap">€{item.price.toFixed(2)}</p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2"
+                                onClick={() => openEditDialog(item)}
+                              >
+                                <Pencil className="w-4 h-4 mr-1" />
+                                编辑
+                              </Button>
+                            </div>
                           </div>
 
                           {/* Details */}
@@ -735,12 +630,18 @@ export function MenuManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label>菜品图片</Label>
+                <Label>图片</Label>
                 <ImageUpload
                   value={addForm.image || null}
                   onChange={(url) => handleAddFieldChange("image", url ?? "")}
-                  onError={(error) => toast({ title: "图片上传失败", description: error, variant: "destructive" })}
-                  onUploadingChange={setAddImageUploading}
+                  onError={(message) => {
+                    toast({
+                      title: "图片上传失败",
+                      description: message,
+                      variant: "destructive",
+                    })
+                  }}
+                  onUploadingChange={setAddUploading}
                   disabled={addSubmitting}
                 />
               </div>
@@ -750,9 +651,9 @@ export function MenuManagement() {
               <Button type="button" variant="outline" onClick={() => handleAddDialogToggle(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={addSubmitting || addImageUploading}>
-                {(addSubmitting || addImageUploading) && <Loader2 className="w-4 h-4 animate-spin" />}
-                {addImageUploading ? "上传中..." : "提交"}
+              <Button type="submit" disabled={addSubmitting}>
+                {createMenuItemMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                提交
               </Button>
             </DialogFooter>
           </form>
@@ -765,7 +666,7 @@ export function MenuManagement() {
           <form onSubmit={handleEditSubmit}>
             <DialogHeader>
               <DialogTitle>编辑菜品</DialogTitle>
-              <DialogDescription>修改菜品信息，提交后会立即更新。</DialogDescription>
+              <DialogDescription>更新菜品信息，保存后会立即生效。</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
@@ -797,7 +698,7 @@ export function MenuManagement() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-menu-category">分类 *</Label>
-                  <Select value={editSelectedExistingCategory} onValueChange={handleEditCategorySelect}>
+                  <Select value={selectedEditCategory} onValueChange={handleEditCategorySelect}>
                     <SelectTrigger id="edit-menu-category">
                       <SelectValue placeholder="选择已有分类" />
                     </SelectTrigger>
@@ -850,12 +751,18 @@ export function MenuManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label>菜品图片</Label>
+                <Label>图片</Label>
                 <ImageUpload
                   value={editForm.image || null}
                   onChange={(url) => handleEditFieldChange("image", url ?? "")}
-                  onError={(error) => toast({ title: "图片操作失败", description: error, variant: "destructive" })}
-                  onUploadingChange={setEditImageUploading}
+                  onError={(message) => {
+                    toast({
+                      title: "图片上传失败",
+                      description: message,
+                      variant: "destructive",
+                    })
+                  }}
+                  onUploadingChange={setEditUploading}
                   disabled={editSubmitting}
                 />
               </div>
@@ -865,34 +772,34 @@ export function MenuManagement() {
               <Button type="button" variant="outline" onClick={() => handleEditDialogToggle(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={editSubmitting || editImageUploading}>
-                {(editSubmitting || editImageUploading) && <Loader2 className="w-4 h-4 animate-spin" />}
-                {editImageUploading ? "上传中..." : "保存"}
+              <Button type="submit" disabled={editSubmitting}>
+                {updateMenuItemMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                保存
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete (下架) Dialog */}
+      {/* Delete Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={handleDeleteDialogToggle}>
         <DialogContent className="max-w-lg">
           <form onSubmit={handleDeleteSubmit}>
             <DialogHeader>
-              <DialogTitle>下架菜品</DialogTitle>
-              <DialogDescription>下架后该菜品将从菜单中隐藏，可在「已下架菜品」中恢复上架。</DialogDescription>
+              <DialogTitle>删除菜品</DialogTitle>
+              <DialogDescription>删除后该菜品将被软删除，并在列表中隐藏。</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
               {deleteServerError && <p className="text-sm text-destructive">{deleteServerError}</p>}
               {deletableItems.length === 0 ? (
-                <p className="text-sm text-muted-foreground">暂无可下架的菜品。</p>
+                <p className="text-sm text-muted-foreground">暂无可删除的菜品。</p>
               ) : (
                 <div className="space-y-2">
                   <Label htmlFor="delete-menu-item">选择菜品 *</Label>
                   <Select value={deleteSelection} onValueChange={setDeleteSelection}>
                     <SelectTrigger id="delete-menu-item">
-                      <SelectValue placeholder="请选择要下架的菜品" />
+                      <SelectValue placeholder="请选择要删除的菜品" />
                     </SelectTrigger>
                     <SelectContent>
                       {deletableItems.map((item) => (
@@ -910,85 +817,16 @@ export function MenuManagement() {
               <Button type="button" variant="outline" onClick={() => handleDeleteDialogToggle(false)}>
                 取消
               </Button>
-              <Button type="submit" variant="destructive" disabled={!deleteSelection || deleteSubmitting}>
-                {deleteSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                下架
+              <Button type="submit" variant="destructive" disabled={!deleteSelection || deleteMenuItemMutation.isPending}>
+                {deleteMenuItemMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                删除
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Deleted Items Sheet */}
-      <Sheet open={deletedSheetOpen} onOpenChange={setDeletedSheetOpen}>
-        <SheetContent className="w-full sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>已下架菜品</SheetTitle>
-            <SheetDescription>查看已下架的菜品，可恢复上架。</SheetDescription>
-          </SheetHeader>
-
-          <div className="mt-6">
-            {deletedLoading && (
-              <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="h-16 rounded-lg bg-muted/40 animate-pulse" />
-                ))}
-              </div>
-            )}
-
-            {/* Error state for deleted items */}
-            {!deletedLoading && hasDeletedError && (
-              <div className="h-40 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <p className="text-sm text-destructive">加载已下架菜品失败</p>
-                <Button variant="outline" size="sm" onClick={() => refetchDeleted()}>
-                  重试
-                </Button>
-              </div>
-            )}
-
-            {!deletedLoading && !hasDeletedError && deletedItems.length === 0 && (
-              <div className="h-40 flex flex-col items-center justify-center text-muted-foreground gap-1">
-                <Archive className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm">暂无已下架的菜品</p>
-              </div>
-            )}
-
-            {!deletedLoading && !hasDeletedError && deletedItems.length > 0 && (
-              <ScrollArea className="h-[calc(100vh-200px)]">
-                <div className="space-y-3 pr-4">
-                  {deletedItems.map((item) => {
-                    const isRestoring = restoringItemId === item.id
-                    return (
-                      <Card key={item.id} className="p-4 bg-muted/30 border-border">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-foreground truncate">{item.name}</h4>
-                            <p className="text-sm text-muted-foreground">{item.category}</p>
-                            <p className="text-xs text-muted-foreground mt-1">€{item.price.toFixed(2)}</p>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRestore(item.id, item.name)}
-                            disabled={isRestoring}
-                          >
-                            {isRestoring ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <RotateCcw className="w-4 h-4 mr-1" />
-                            )}
-                            恢复上架
-                          </Button>
-                        </div>
-                      </Card>
-                    )
-                  })}
-                </div>
-              </ScrollArea>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      {/* datalist removed now that Select provides options */}
     </div>
   )
 }

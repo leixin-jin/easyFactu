@@ -13,7 +13,8 @@ export function useCheckoutHistoryQuery({ limit = 50 }: { limit?: number } = {})
   return useQuery({
     queryKey: checkoutHistoryKeys.list(limit),
     queryFn: () => api.checkoutHistory.list({ limit }),
-    staleTime: 30 * 1000,
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes
   })
 }
 

@@ -30,3 +30,9 @@ export {
   useTransactionDetailQuery,
   useReverseTransaction,
 } from "./use-transactions"
+export {
+  restaurantSettingsKeys,
+  useRestaurantSettingsQuery,
+  useUpdateRestaurantSettings,
+} from "./use-restaurant-settings"
+

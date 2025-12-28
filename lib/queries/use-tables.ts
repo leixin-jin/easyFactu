@@ -15,6 +15,7 @@ export function useTablesQuery() {
     queryKey: tableKeys.list(),
     queryFn: () => api.tables.list(),
     staleTime: 30 * 1000, // 30 seconds
+    gcTime: 2 * 60 * 1000, // 2 minutes
   })
 }
 

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import type { OrderBatchView } from "@/types/pos"
 import type { RestaurantTableView } from "@/hooks/useRestaurantTables"
+import { useTableOrderQuery } from "@/lib/queries"
 
 interface TransferableItem {
   id: string
@@ -391,9 +392,11 @@ export function MergeTableDialog({
 }: MergeTableDialogProps) {
   const { toast } = useToast()
   const [sourceTableId, setSourceTableId] = useState("")
-  const [loadingItems, setLoadingItems] = useState(false)
-  const [batches, setBatches] = useState<OrderBatchView[]>([])
-  const items = useMemo(() => toTransferableItems(batches), [batches])
+  const sourceOrderQuery = useTableOrderQuery(sourceTableId)
+  const batches = !sourceTableId || sourceOrderQuery.error
+    ? []
+    : (sourceOrderQuery.data?.batches ?? [])
+  const items = useMemo(() => toTransferableItems(batches as OrderBatchView[]), [batches])
   const sourceOptions = useMemo(
     () =>
       tables
@@ -407,7 +410,6 @@ export function MergeTableDialog({
     if (!open) {
       setSourceTableId("")
       setSelected({})
-      setBatches([])
     }
   }, [open])
 
@@ -444,38 +446,20 @@ export function MergeTableDialog({
     })
   }, [items])
 
-  const fetchOrderItems = async (tableId: string) => {
-    if (!tableId) {
-      setBatches([])
-      return
-    }
-    setLoadingItems(true)
-    setSelected({})
-    try {
-      const res = await fetch(`/api/orders?tableId=${encodeURIComponent(tableId)}`, { cache: "no-store" })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        const message = (data && data.error) || "加载订单失败"
-        throw new Error(message)
-      }
-      const incomingBatches: OrderBatchView[] = data?.batches ?? []
-      setBatches(incomingBatches)
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "加载订单失败"
-      setBatches([])
-      toast({
-        title: "加载失败",
-        description: message,
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingItems(false)
-    }
-  }
+  useEffect(() => {
+    if (!sourceTableId || !sourceOrderQuery.error) return
+    const message =
+      sourceOrderQuery.error instanceof Error ? sourceOrderQuery.error.message : "加载订单失败"
+    toast({
+      title: "加载失败",
+      description: message,
+      variant: "destructive",
+    })
+  }, [sourceOrderQuery.error, sourceTableId, toast])
 
   const handleSourceChange = (value: string) => {
     setSourceTableId(value)
-    fetchOrderItems(value)
+    setSelected({})
   }
 
   const selectAll = () => {
@@ -549,11 +533,7 @@ export function MergeTableDialog({
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">来源桌台</p>
-            <Select
-              value={sourceTableId}
-              onValueChange={handleSourceChange}
-              disabled={submitting}
-            >
+            <Select value={sourceTableId} onValueChange={handleSourceChange} disabled={submitting}>
               <SelectTrigger>
                 <SelectValue placeholder="选择来源桌台" />
               </SelectTrigger>
@@ -577,9 +557,9 @@ export function MergeTableDialog({
             items={items}
             selected={selected}
             onChange={handleSelectChange}
-            disabled={submitting || loadingItems}
+            disabled={submitting || sourceOrderQuery.isFetching}
           />
-          {loadingItems && (
+          {sourceTableId && sourceOrderQuery.isFetching && (
             <p className="text-xs text-muted-foreground">正在加载来源桌台的订单...</p>
           )}
         </div>
@@ -587,7 +567,7 @@ export function MergeTableDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
-          <Button onClick={handleConfirm} disabled={submitting || loadingItems}>
+          <Button onClick={handleConfirm} disabled={submitting || sourceOrderQuery.isFetching}>
             {submitting ? "处理中..." : "确认并台"}
           </Button>
         </DialogFooter>

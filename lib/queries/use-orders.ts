@@ -23,6 +23,7 @@ export function useTableOrderQuery(tableId: string) {
     queryFn: () => api.orders.get(tableId),
     enabled: !!tableId,
     staleTime: 0, // Order data needs to be fresh
+    gcTime: 60 * 1000, // 1 minute
     refetchOnMount: true,
   })
 }

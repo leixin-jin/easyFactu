@@ -4,26 +4,19 @@ import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useMenuData } from "@/hooks/useMenuData"
 import { useToast } from "@/hooks/use-toast"
-import {
-  type RestaurantTableView as TableOption,
-  useRestaurantTables,
-} from "@/hooks/useRestaurantTables"
-import { useCheckout } from "@/hooks/useCheckout"
+import { useRestaurantTables } from "@/hooks/useRestaurantTables"
+import { useCheckout as useCheckoutState } from "@/hooks/useCheckout"
 import { usePosOrder } from "@/hooks/usePosOrder"
 import { PosMenuPane } from "./PosMenuPane"
 import { PosOrderSidebar } from "./PosOrderSidebar"
 import { PosCheckoutDialog } from "./PosCheckoutDialog"
 import { SplitTableDialog, MergeTableDialog } from "@/components/features/tables/TableTransferDialogs"
-import type {
-  CheckoutReceiptData,
-  MenuItem,
-  ReceiptItem,
-} from "@/types/pos"
+import type { CheckoutReceiptData, ReceiptItem } from "@/types/pos"
 import { useTableTransfer } from "@/hooks/useTableTransfer"
 import { usePosCart } from "@/hooks/usePosCart"
-import { getErrorMessage } from "@/lib/constants"
 import { mockTables } from "@/lib/mocks"
 import { PosReceiptPreview } from "./PosReceiptPreview"
+import { useCheckout as useCheckoutMutation } from "@/lib/queries"
 
 export function POSInterface() {
   const router = useRouter()
@@ -46,7 +39,7 @@ export function POSInterface() {
   const { cart, addToCart, updateQuantity, removeFromCart, clearCart } = usePosCart()
   const [splitTableDialog, setSplitTableDialog] = useState(false)
   const [mergeTableDialog, setMergeTableDialog] = useState(false)
-  const [checkoutLoading, setCheckoutLoading] = useState(false)
+
   const [, setOperationStatus] = useState<"closed" | "open" | "pending">("closed")
   const [printData, setPrintData] = useState<CheckoutReceiptData | null>(null)
   const [isPrinting, setIsPrinting] = useState(false)
@@ -88,7 +81,9 @@ export function POSInterface() {
     changeAmount,
     totalItemsCount,
     actions: checkoutActions,
-  } = useCheckout({ batches, cart })
+  } = useCheckoutState({ batches, cart })
+
+  const checkoutMutation = useCheckoutMutation()
 
   // 菜单与分类（仅来自 API，不再使用 mock 回退）
   const { items: menuItems, categories: menuCategories } = useMenuData()
@@ -160,7 +155,7 @@ export function POSInterface() {
   }
 
   const handleCheckout = async () => {
-    if (checkoutLoading) return
+    if (checkoutMutation.isPending) return
 
     if (!selectedTable) {
       toast({
@@ -224,78 +219,55 @@ export function POSInterface() {
     }
 
     const itemsForReceipt: ReceiptItem[] = aaMode
-      ? aaItems.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          unitPrice: item.price,
-          totalPrice: item.price * item.quantity,
-        }))
-      : aggregatedItems.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          unitPrice: item.price,
-          totalPrice: item.price * item.quantity,
-        }))
+      ? aaItems.map((item: { name: string; quantity: number; price: number }) => ({
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.price,
+        totalPrice: item.price * item.quantity,
+      }))
+      : aggregatedItems.map((item: { name: string; quantity: number; price: number }) => ({
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.price,
+        totalPrice: item.price * item.quantity,
+      }))
+
+    const orderId = currentOrder?.id ?? null
+
+    if (!orderId) {
+      const message = "未找到可结账的订单"
+      setOrderError(message)
+      toast({
+        title: "结账失败",
+        description: message,
+        variant: "destructive",
+      })
+      return
+    }
+
+    const mode = aaMode ? "aa" : "full"
 
     try {
-      setCheckoutLoading(true)
       setOrderError(null)
 
-      const orderId = currentOrder?.id ?? null
-
-      if (!orderId) {
-        const message = "未找到可结账的订单"
-        setOrderError(message)
-        toast({
-          title: "结账失败",
-          description: message,
-          variant: "destructive",
-        })
-        return
-      }
-
-      const mode = aaMode ? "aa" : "full"
-
-      const checkoutRes = await fetch("/api/orders/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tableId: selectedTable,
-          orderId,
-          mode,
-          paymentMethod,
-          discountPercent,
-          clientSubtotal: checkoutSubtotalValue,
-          clientTotal: checkoutTotalValue,
-          receivedAmount: effectiveReceived,
-          changeAmount: effectiveReceived - checkoutTotalValue,
-          aaItems: aaMode
-            ? aaItems.map((item) => ({
-                menuItemId: item.id,
-                quantity: item.quantity,
-                price: item.price,
-              }))
-            : undefined,
-        }),
+      const checkoutData = await checkoutMutation.mutateAsync({
+        tableId: selectedTable,
+        orderId,
+        mode,
+        paymentMethod,
+        discountPercent,
+        clientSubtotal: checkoutSubtotalValue,
+        clientTotal: checkoutTotalValue,
+        receivedAmount: effectiveReceived,
+        changeAmount: effectiveReceived - checkoutTotalValue,
+        aaItems: aaMode
+          ? aaItems.map((item: { id: string; quantity: number; price: number }) => ({
+            menuItemId: item.id,
+            quantity: item.quantity,
+            price: item.price,
+          }))
+          : undefined,
       })
-
-      const checkoutData = await checkoutRes.json().catch(() => null)
-
-      if (!checkoutRes.ok) {
-        const rawMessage = (checkoutData && (checkoutData.error as string)) || ""
-        const code = (checkoutData && (checkoutData.code as string)) || ""
-        const message = code
-          ? getErrorMessage(code, rawMessage)
-          : rawMessage || `结账失败 (${checkoutRes.status})`
-
-        setOrderError(message)
-        toast({
-          title: "结账失败",
-          description: message,
-          variant: "destructive",
-        })
-        return
-      }
 
       const tableNumber =
         tables.find((t) => t.id === selectedTable)?.number || tableNumberParam || ""
@@ -332,16 +304,14 @@ export function POSInterface() {
         title: "结账成功",
         description: "订单已结账并生成交易记录，正在准备打印小票。",
       })
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "结账失败"
+    } catch (e: any) {
+      const message = e.message || "结账失败"
       setOrderError(message)
       toast({
         title: "结账失败",
         description: message,
         variant: "destructive",
       })
-    } finally {
-      setCheckoutLoading(false)
     }
   }
 
@@ -467,156 +437,156 @@ export function POSInterface() {
   return (
     <>
       <div className="h-[calc(100vh-8rem)] flex gap-4 print:hidden">
-      <PosMenuPane
-        selectedTable={selectedTable}
-        tables={tables}
-        tableNumberParam={tableNumberParam}
-        searchQuery={searchQuery}
-        onSearchQueryChange={setSearchQuery}
-        selectedCategory={selectedCategory}
-        onCategoryChange={setSelectedCategory}
-        menuCategories={menuCategories}
-        filteredItems={filteredItems}
-        onAddToCart={addToCart}
-      />
+        <PosMenuPane
+          selectedTable={selectedTable}
+          tables={tables}
+          tableNumberParam={tableNumberParam}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+          menuCategories={menuCategories}
+          filteredItems={filteredItems}
+          onAddToCart={addToCart}
+        />
 
-      {/* Right side - Cart */}
-      <PosOrderSidebar
-        tables={tables}
-        loadingTables={loadingTables}
-        loadError={loadError}
-        selectedTable={selectedTable}
-        onSelectedTableChange={setSelectedTable}
-        totalItemsCount={totalItemsCount}
-        loadingOrder={loadingOrder}
-        batches={batches}
-        cart={cart}
-        onDecreasePersistedItem={handleDecreasePersistedItem}
-        onRemovePersistedItem={handleRemovePersistedItem}
-        onUpdateCartQuantity={updateQuantity}
-        onRemoveFromCart={removeFromCart}
-        subtotal={subtotal}
-        discount={discountPercent}
-        discountAmount={discountAmount}
-        total={total}
-        orderError={orderError}
-        onSubmitBatch={handleSubmitBatch}
-        onOpenCheckout={handleOpenCheckout}
-        onClearOrder={handleClearOrder}
-        onAA={handleAA}
-        submittingBatch={submittingBatch}
-        clearingOrder={clearingOrder}
-        maxExistingBatchNo={maxExistingBatchNo}
-        onOpenSplit={handleOpenSplitDialog}
-        onOpenMerge={handleOpenMergeDialog}
-      />
+        {/* Right side - Cart */}
+        <PosOrderSidebar
+          tables={tables}
+          loadingTables={loadingTables}
+          loadError={loadError}
+          selectedTable={selectedTable}
+          onSelectedTableChange={setSelectedTable}
+          totalItemsCount={totalItemsCount}
+          loadingOrder={loadingOrder}
+          batches={batches}
+          cart={cart}
+          onDecreasePersistedItem={handleDecreasePersistedItem}
+          onRemovePersistedItem={handleRemovePersistedItem}
+          onUpdateCartQuantity={updateQuantity}
+          onRemoveFromCart={removeFromCart}
+          subtotal={subtotal}
+          discount={discountPercent}
+          discountAmount={discountAmount}
+          total={total}
+          orderError={orderError}
+          onSubmitBatch={handleSubmitBatch}
+          onOpenCheckout={handleOpenCheckout}
+          onClearOrder={handleClearOrder}
+          onAA={handleAA}
+          submittingBatch={submittingBatch}
+          clearingOrder={clearingOrder}
+          maxExistingBatchNo={maxExistingBatchNo}
+          onOpenSplit={handleOpenSplitDialog}
+          onOpenMerge={handleOpenMergeDialog}
+        />
 
-      <PosCheckoutDialog
-        open={checkoutDialog}
-        onOpenChange={(open) => {
-          if (!open) {
-            checkoutActions.closeCheckout()
-          }
-        }}
-        tables={tables}
-        selectedTable={selectedTable}
-        tableNumberParam={tableNumberParam}
-        batches={batches}
-        cart={cart}
-        maxExistingBatchNo={maxExistingBatchNo}
-        aggregatedItems={aggregatedItems}
-        aaMode={aaMode}
-        aaItems={aaItems}
-        onClearAAItems={checkoutActions.clearAaItems}
-        onAggregatedItemClick={handleAggregatedItemClick}
-        onRemoveAAItem={checkoutActions.removeAaItem}
-        onEditAAItemQuantity={handleEditAaItemQuantity}
-        aaQuantityDialogOpen={aaQuantityDialogOpen}
-        aaQuantityTarget={aaQuantityTarget}
-        aaQuantityInput={aaQuantityInput}
-        onAaQuantityInputChange={checkoutActions.setAaQuantityInput}
-        onConfirmAaQuantity={() => checkoutActions.confirmAaQuantity(aaQuantityInput)}
-        onCancelAaQuantity={checkoutActions.cancelAaQuantityDialog}
-        paymentMethod={paymentMethod}
-        onPaymentMethodChange={checkoutActions.setPaymentMethod}
-        receivedAmount={receivedAmount}
-        onReceivedAmountChange={checkoutActions.setReceivedAmount}
-        changeAmount={changeAmount}
-        discount={discountPercent}
-        onDiscountChange={checkoutActions.setDiscount}
-        checkoutSubtotal={checkoutSubtotal}
-        checkoutDiscountAmount={checkoutDiscountAmount}
-        checkoutTotal={checkoutTotal}
-        currentOrderPaidAmount={currentOrder?.paidAmount ?? 0}
-        checkoutLoading={checkoutLoading}
-        onCheckout={handleCheckout}
-      />
+        <PosCheckoutDialog
+          open={checkoutDialog}
+          onOpenChange={(open) => {
+            if (!open) {
+              checkoutActions.closeCheckout()
+            }
+          }}
+          tables={tables}
+          selectedTable={selectedTable}
+          tableNumberParam={tableNumberParam}
+          batches={batches}
+          cart={cart}
+          maxExistingBatchNo={maxExistingBatchNo}
+          aggregatedItems={aggregatedItems}
+          aaMode={aaMode}
+          aaItems={aaItems}
+          onClearAAItems={checkoutActions.clearAaItems}
+          onAggregatedItemClick={handleAggregatedItemClick}
+          onRemoveAAItem={checkoutActions.removeAaItem}
+          onEditAAItemQuantity={handleEditAaItemQuantity}
+          aaQuantityDialogOpen={aaQuantityDialogOpen}
+          aaQuantityTarget={aaQuantityTarget}
+          aaQuantityInput={aaQuantityInput}
+          onAaQuantityInputChange={checkoutActions.setAaQuantityInput}
+          onConfirmAaQuantity={() => checkoutActions.confirmAaQuantity(aaQuantityInput)}
+          onCancelAaQuantity={checkoutActions.cancelAaQuantityDialog}
+          paymentMethod={paymentMethod}
+          onPaymentMethodChange={checkoutActions.setPaymentMethod}
+          receivedAmount={receivedAmount}
+          onReceivedAmountChange={checkoutActions.setReceivedAmount}
+          changeAmount={changeAmount}
+          discount={discountPercent}
+          onDiscountChange={checkoutActions.setDiscount}
+          checkoutSubtotal={checkoutSubtotal}
+          checkoutDiscountAmount={checkoutDiscountAmount}
+          checkoutTotal={checkoutTotal}
+          currentOrderPaidAmount={currentOrder?.paidAmount ?? 0}
+          checkoutLoading={checkoutMutation.isPending}
+          onCheckout={handleCheckout}
+        />
 
-      <SplitTableDialog
-        open={splitTableDialog}
-        onOpenChange={setSplitTableDialog}
-        sourceTableId={selectedTable}
-        tables={tables}
-        batches={batches}
-        loading={loadingOrder}
-        submitting={splitLoading}
-        onConfirm={async ({ targetTableId, items, moveAll }) => {
-          if (!selectedTable) {
-            toast({
-              title: "未选择桌台",
-              description: "请先选择桌台后再拆台。",
-              variant: "destructive",
+        <SplitTableDialog
+          open={splitTableDialog}
+          onOpenChange={setSplitTableDialog}
+          sourceTableId={selectedTable}
+          tables={tables}
+          batches={batches}
+          loading={loadingOrder}
+          submitting={splitLoading}
+          onConfirm={async ({ targetTableId, items, moveAll }) => {
+            if (!selectedTable) {
+              toast({
+                title: "未选择桌台",
+                description: "请先选择桌台后再拆台。",
+                variant: "destructive",
+              })
+              return
+            }
+            await split({
+              sourceTableId: selectedTable,
+              targetTableId,
+              items,
+              moveAll,
             })
-            return
-          }
-          await split({
-            sourceTableId: selectedTable,
-            targetTableId,
-            items,
-            moveAll,
-          })
-        }}
-      />
+          }}
+        />
 
-      <MergeTableDialog
-        open={mergeTableDialog}
-        onOpenChange={setMergeTableDialog}
-        targetTableId={selectedTable}
-        tables={tables}
-        submitting={mergeLoading}
-        onConfirm={async ({ sourceTableId, items, moveAll }) => {
-          if (!selectedTable) {
-            toast({
-              title: "未选择桌台",
-              description: "请先选择桌台后再并台。",
-              variant: "destructive",
+        <MergeTableDialog
+          open={mergeTableDialog}
+          onOpenChange={setMergeTableDialog}
+          targetTableId={selectedTable}
+          tables={tables}
+          submitting={mergeLoading}
+          onConfirm={async ({ sourceTableId, items, moveAll }) => {
+            if (!selectedTable) {
+              toast({
+                title: "未选择桌台",
+                description: "请先选择桌台后再并台。",
+                variant: "destructive",
+              })
+              return
+            }
+            await merge({
+              sourceTableId,
+              targetTableId: selectedTable,
+              items,
+              moveAll,
             })
-            return
-          }
-          await merge({
-            sourceTableId,
-            targetTableId: selectedTable,
-            items,
-            moveAll,
-          })
-        }}
-      />
-    </div>
+          }}
+        />
+      </div>
 
-    {printData && (
-      <PosReceiptPreview
-        data={printData}
-        onClose={() => {
-          setPrintData(null)
-          setIsPrinting(false)
-        }}
-        onPrint={() => {
-          if (typeof window !== "undefined") {
-            window.print()
-          }
-        }}
-      />
-    )}
+      {printData && (
+        <PosReceiptPreview
+          data={printData}
+          onClose={() => {
+            setPrintData(null)
+            setIsPrinting(false)
+          }}
+          onPrint={() => {
+            if (typeof window !== "undefined") {
+              window.print()
+            }
+          }}
+        />
+      )}
     </>
   )
 }
