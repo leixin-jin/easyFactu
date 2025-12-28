@@ -15,7 +15,8 @@ export function useTransactionDetailQuery(id: string | null) {
     queryKey: transactionKeys.detail(id ?? ""),
     queryFn: () => api.transactions.getDetail(id!),
     enabled: !!id,
-    staleTime: 30 * 1000,
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes
   })
 }
 

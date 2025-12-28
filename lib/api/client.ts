@@ -23,6 +23,8 @@ import type {
   CheckoutHistoryResponse,
   TransactionDetailResponse,
   ReverseTransactionResponse,
+  RestaurantSettingsResponse,
+  UpdateRestaurantSettingsInput,
 } from "@/types/api"
 
 export const api = {
@@ -150,5 +152,16 @@ export const api = {
 
     exportUrl: (granularity: ReportGranularity, format: "xlsx" = "xlsx") =>
       `/api/reports/export?format=${encodeURIComponent(format)}&granularity=${encodeURIComponent(granularity)}`,
+  },
+
+  restaurantSettings: {
+    get: () =>
+      fetcher<RestaurantSettingsResponse>("/api/restaurant-settings"),
+
+    update: (data: UpdateRestaurantSettingsInput) =>
+      fetcher<RestaurantSettingsResponse>("/api/restaurant-settings", {
+        method: "PUT",
+        body: data,
+      }),
   },
 }

@@ -128,12 +128,23 @@ export interface CreateOrderItemInput {
   notes?: string | null
 }
 
+export interface CheckoutAAItem {
+  menuItemId: string
+  quantity: number
+  price: number
+}
+
 export interface CheckoutInput {
+  tableId: string
   orderId: string
+  mode?: "full" | "aa"
   paymentMethod: string
-  paidAmount: number
   discountPercent?: number
-  items?: { id: string; quantity: number }[]
+  clientSubtotal: number
+  clientTotal: number
+  receivedAmount?: number
+  changeAmount?: number
+  aaItems?: CheckoutAAItem[]
 }
 
 export interface CheckoutResponse {
@@ -338,4 +349,26 @@ export interface ReportsResponse {
   kpis: ReportsKpis
   salesTrend: ReportsSalesTrendPoint[]
   topItems: ReportsTopItem[]
+}
+
+// Restaurant Settings Types
+export interface RestaurantSettingsResponse {
+  id: string | null
+  restaurantName: string
+  address: string | null
+  phone: string | null
+  email: string | null
+  taxRate: string
+  currency: string
+  businessHours: string | null
+}
+
+export interface UpdateRestaurantSettingsInput {
+  restaurantName: string
+  address?: string | null
+  phone?: string | null
+  email?: string | null
+  taxRate: string
+  currency: string
+  businessHours?: string | null
 }

@@ -2,7 +2,7 @@
 
 - ID: phase2-data-fetching
 - Owner: 待分配
-- Status: proposed
+- Status: in-progress
 
 ## Summary
 将所有 UI 组件的直接 `fetch` 调用替换为 TanStack Query（React Query）的 hooks，实现数据缓存一致性和统一的 loading/error 状态管理。明确配置缓存策略，并确保 mutation 的缓存失效策略一致。
@@ -36,14 +36,15 @@
 
 ## Acceptance Criteria
 - [x] POS 结账 UI 不再直接 `fetch` 结账接口
-- [x] `PosInterface.tsx` 行数 < 300（拆分后）
+- [ ] `PosInterface.tsx` 行数 < 300（拆分后）（当前约 600 行，待拆分）
 - [x] TableManagement 不再直接 `fetch`
 - [x] TableTransferDialogs 不再直接 `fetch`
 - [x] MenuManagement 不再直接 `fetch`
-- [x] Reports UI 不再直接 `fetch` 报表
+- [x] Reports UI 使用 `useReportsQuery`（export 使用直接 fetch 属于可接受的文件下载场景）
 - [x] 所有 queries 配置了 staleTime/gcTime
 - [x] 所有 mutation 的 `onSuccess` 配置 `invalidateQueries`（对应 queryKey）
-- [x] 验收扫描：`rg "fetch\\(" components hooks` 减少或为零
+- [x] SettingsView 使用 `useRestaurantSettingsQuery` 和 `useUpdateRestaurantSettings`
+- [x] 验收扫描：组件/hooks 中的直接 `fetch` 已替换为 TanStack Query（仅保留 reports export）
 
 ## 缓存策略规范
 

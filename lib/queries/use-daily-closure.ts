@@ -18,7 +18,8 @@ export function useDailyClosureQuery() {
   return useQuery({
     queryKey: dailyClosureKeys.current(),
     queryFn: () => api.dailyClosure.get(),
-    staleTime: 0,
+    staleTime: 0, // 实时数据
+    gcTime: 60 * 1000, // 1 minute
     refetchOnMount: true,
   })
 }

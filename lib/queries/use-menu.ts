@@ -16,6 +16,7 @@ export function useMenuQuery() {
     queryKey: menuKeys.list(),
     queryFn: () => api.menuItems.list(),
     staleTime: 5 * 60 * 1000, // 5 minutes - menu data can be cached longer
+    gcTime: 10 * 60 * 1000, // 10 minutes
   })
 }
 
@@ -24,6 +25,7 @@ export function useDeletedMenuItems() {
     queryKey: menuKeys.deleted(),
     queryFn: () => api.menuItems.listDeleted(),
     staleTime: 30 * 1000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes
   })
 }
 
