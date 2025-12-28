@@ -53,9 +53,11 @@ export function useTableTransfer(options: UseTableTransferOptions) {
       setOrderError(null)
       try {
         const payload = await transferMutation.mutateAsync({
+          mode,
           sourceTableId,
           targetTableId,
-          items: items.map((item) => ({ id: item.orderItemId, quantity: item.quantity })),
+          items: items.map((item) => ({ orderItemId: item.orderItemId, quantity: item.quantity })),
+          moveAll,
         })
 
         // Handle the response - the mutation onSuccess already invalidates queries
@@ -115,4 +117,3 @@ export function useTableTransfer(options: UseTableTransferOptions) {
     mergeLoading,
   }
 }
-

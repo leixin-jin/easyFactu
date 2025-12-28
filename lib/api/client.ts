@@ -14,6 +14,7 @@ import type {
   ClearOrderInput,
   UpdateOrderItemInput,
   TransferOrderInput,
+  TransferOrderResponse,
   DailyClosureResponse,
   ConfirmDailyClosureInput,
   CreateDailyClosureAdjustmentInput,
@@ -140,7 +141,7 @@ export const api = {
       }),
 
     transfer: (data: TransferOrderInput) =>
-      fetcher<OrderResponse>("/api/orders/transfer", {
+      fetcher<TransferOrderResponse>("/api/orders/transfer", {
         method: "POST",
         body: data,
       }),

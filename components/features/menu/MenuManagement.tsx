@@ -2,9 +2,9 @@
 
 import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
-import { Loader2, Minus, Plus, Search } from "lucide-react"
+import { Loader2, Minus, Pencil, Plus, Search } from "lucide-react"
 
-import { useMenuData } from "@/hooks/useMenuData"
+import { useMenuData, type UIMenuItem } from "@/hooks/useMenuData"
 import { useToast } from "@/hooks/use-toast"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useCreateMenuItem, useDeleteMenuItem } from "@/lib/queries"
+import { ImageUpload } from "@/components/features/menu/ImageUpload"
+import { useCreateMenuItem, useDeleteMenuItem, useUpdateMenuItem } from "@/lib/queries"
 
 interface Category {
   id: string
@@ -30,7 +31,7 @@ interface Category {
   count?: number
 }
 
-interface AddMenuForm {
+interface MenuForm {
   name: string
   nameEn: string
   category: string
@@ -39,11 +40,11 @@ interface AddMenuForm {
   image: string
 }
 
-type AddMenuFormErrors = Partial<Record<keyof AddMenuForm, string>>
+type MenuFormErrors = Partial<Record<keyof MenuForm, string>>
 
 const DECIMAL_PATTERN = /^\d+(\.\d{1,2})?$/
 
-const createEmptyForm = (category?: string): AddMenuForm => ({
+const createEmptyForm = (category?: string): MenuForm => ({
   name: "",
   nameEn: "",
   category: category && category !== "all" ? category : "",
@@ -52,8 +53,17 @@ const createEmptyForm = (category?: string): AddMenuForm => ({
   image: "",
 })
 
-const validateAddForm = (form: AddMenuForm): AddMenuFormErrors => {
-  const errors: AddMenuFormErrors = {}
+const createFormFromItem = (item: UIMenuItem): MenuForm => ({
+  name: item.name ?? "",
+  nameEn: item.nameEn ?? "",
+  category: item.category ?? "",
+  price: Number.isFinite(item.price) ? String(item.price) : "",
+  description: item.description ?? "",
+  image: item.image ?? "",
+})
+
+const validateMenuForm = (form: MenuForm): MenuFormErrors => {
+  const errors: MenuFormErrors = {}
 
   if (!form.name.trim()) {
     errors.name = "请输入英文名称"
@@ -85,15 +95,25 @@ export function MenuManagement() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
-  const [addForm, setAddForm] = useState<AddMenuForm>(createEmptyForm())
+  const [addForm, setAddForm] = useState<MenuForm>(createEmptyForm())
   const [customCategory, setCustomCategory] = useState("")
-  const [addErrors, setAddErrors] = useState<AddMenuFormErrors>({})
+  const [addErrors, setAddErrors] = useState<MenuFormErrors>({})
   const [addServerError, setAddServerError] = useState<string | null>(null)
+  const [addUploading, setAddUploading] = useState(false)
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<UIMenuItem | null>(null)
+  const [editForm, setEditForm] = useState<MenuForm>(createEmptyForm())
+  const [editCustomCategory, setEditCustomCategory] = useState("")
+  const [editErrors, setEditErrors] = useState<MenuFormErrors>({})
+  const [editServerError, setEditServerError] = useState<string | null>(null)
+  const [editUploading, setEditUploading] = useState(false)
 
   const [deleteSelection, setDeleteSelection] = useState("")
   const [deleteServerError, setDeleteServerError] = useState<string | null>(null)
 
   const createMenuItemMutation = useCreateMenuItem()
+  const updateMenuItemMutation = useUpdateMenuItem()
   const deleteMenuItemMutation = useDeleteMenuItem()
 
   const categories = useMemo<Category[]>(() => {
@@ -146,12 +166,16 @@ export function MenuManagement() {
   )
 
   const selectedExistingCategory = categorySuggestions.includes(addForm.category) ? addForm.category : ""
+  const selectedEditCategory = categorySuggestions.includes(editForm.category) ? editForm.category : ""
+  const addSubmitting = createMenuItemMutation.isPending || addUploading
+  const editSubmitting = updateMenuItemMutation.isPending || editUploading
 
   const openAddDialog = () => {
     setAddForm(createEmptyForm(selectedCategory))
     setCustomCategory("")
     setAddErrors({})
     setAddServerError(null)
+    setAddUploading(false)
     setAddDialogOpen(true)
   }
 
@@ -162,7 +186,7 @@ export function MenuManagement() {
       setCustomCategory("")
       setAddErrors({})
       setAddServerError(null)
-      
+      setAddUploading(false)
     }
   }
 
@@ -171,12 +195,37 @@ export function MenuManagement() {
     if (!open) {
       setDeleteSelection("")
       setDeleteServerError(null)
-      
     }
   }
 
-  const handleAddFieldChange = <T extends keyof AddMenuForm>(field: T, value: AddMenuForm[T]) => {
+  const openEditDialog = (item: UIMenuItem) => {
+    setEditTarget(item)
+    setEditForm(createFormFromItem(item))
+    setEditCustomCategory("")
+    setEditErrors({})
+    setEditServerError(null)
+    setEditUploading(false)
+    setEditDialogOpen(true)
+  }
+
+  const handleEditDialogToggle = (open: boolean) => {
+    setEditDialogOpen(open)
+    if (!open) {
+      setEditTarget(null)
+      setEditForm(createEmptyForm())
+      setEditCustomCategory("")
+      setEditErrors({})
+      setEditServerError(null)
+      setEditUploading(false)
+    }
+  }
+
+  const handleAddFieldChange = <T extends keyof MenuForm>(field: T, value: MenuForm[T]) => {
     setAddForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleEditFieldChange = <T extends keyof MenuForm>(field: T, value: MenuForm[T]) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleCategorySelect = (value: string) => {
@@ -189,9 +238,27 @@ export function MenuManagement() {
     handleAddFieldChange("category", value)
   }
 
+  const handleEditCategorySelect = (value: string) => {
+    setEditCustomCategory("")
+    handleEditFieldChange("category", value)
+  }
+
+  const handleEditCustomCategoryChange = (value: string) => {
+    setEditCustomCategory(value)
+    handleEditFieldChange("category", value)
+  }
+
   const handleAddSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
-    const errors = validateAddForm(addForm)
+    if (addUploading) {
+      toast({
+        title: "图片上传中",
+        description: "请等待图片上传完成后再提交。",
+        variant: "destructive",
+      })
+      return
+    }
+    const errors = validateMenuForm(addForm)
     setAddErrors(errors)
     if (Object.keys(errors).length > 0) return
 
@@ -217,6 +284,56 @@ export function MenuManagement() {
       setAddServerError(message)
       toast({
         title: "添加菜品失败",
+        description: message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleEditSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
+    if (!editTarget) {
+      setEditServerError("请选择要编辑的菜品")
+      return
+    }
+    if (editUploading) {
+      toast({
+        title: "图片上传中",
+        description: "请等待图片上传完成后再提交。",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const errors = validateMenuForm(editForm)
+    setEditErrors(errors)
+    if (Object.keys(errors).length > 0) return
+
+    try {
+      setEditServerError(null)
+
+      const updated = await updateMenuItemMutation.mutateAsync({
+        id: editTarget.id,
+        data: {
+          name: editForm.name.trim(),
+          nameEn: editForm.nameEn.trim(),
+          category: editForm.category.trim(),
+          price: parseFloat(editForm.price.trim()),
+          description: editForm.description.trim(),
+          image: editForm.image.trim(),
+        },
+      })
+
+      toast({
+        title: "菜品已更新",
+        description: updated?.name ? `${updated.name} 已更新` : "菜品信息已更新",
+      })
+      handleEditDialogToggle(false)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "更新菜品失败"
+      setEditServerError(message)
+      toast({
+        title: "更新菜品失败",
         description: message,
         variant: "destructive",
       })
@@ -383,7 +500,7 @@ export function MenuManagement() {
 
                         {/* Content */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-start justify-between gap-3 mb-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold text-foreground">{item.name}</h3>
@@ -393,7 +510,18 @@ export function MenuManagement() {
                                 <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
                               )}
                             </div>
-                            <p className="text-lg font-bold text-primary whitespace-nowrap">€{item.price.toFixed(2)}</p>
+                            <div className="flex flex-col items-end gap-2">
+                              <p className="text-lg font-bold text-primary whitespace-nowrap">€{item.price.toFixed(2)}</p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2"
+                                onClick={() => openEditDialog(item)}
+                              >
+                                <Pencil className="w-4 h-4 mr-1" />
+                                编辑
+                              </Button>
+                            </div>
                           </div>
 
                           {/* Details */}
@@ -504,12 +632,19 @@ export function MenuManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="menu-image">图片 URL 或相对路径</Label>
-                <Input
-                  id="menu-image"
-                  value={addForm.image}
-                  onChange={(e) => handleAddFieldChange("image", e.target.value)}
-                  placeholder="/images/dishes/salad.jpg"
+                <Label>图片</Label>
+                <ImageUpload
+                  value={addForm.image || null}
+                  onChange={(url) => handleAddFieldChange("image", url ?? "")}
+                  onError={(message) => {
+                    toast({
+                      title: "图片上传失败",
+                      description: message,
+                      variant: "destructive",
+                    })
+                  }}
+                  onUploadingChange={setAddUploading}
+                  disabled={addSubmitting}
                 />
               </div>
             </div>
@@ -518,9 +653,130 @@ export function MenuManagement() {
               <Button type="button" variant="outline" onClick={() => handleAddDialogToggle(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={createMenuItemMutation.isPending}>
+              <Button type="submit" disabled={addSubmitting}>
                 {createMenuItemMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                 提交
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={handleEditDialogToggle}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <form onSubmit={handleEditSubmit}>
+            <DialogHeader>
+              <DialogTitle>编辑菜品</DialogTitle>
+              <DialogDescription>更新菜品信息，保存后会立即生效。</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {editServerError && <p className="text-sm text-destructive">{editServerError}</p>}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-menu-name-en">英文名称 *</Label>
+                  <Input
+                    id="edit-menu-name-en"
+                    value={editForm.name}
+                    onChange={(e) => handleEditFieldChange("name", e.target.value)}
+                    aria-invalid={Boolean(editErrors.name)}
+                    placeholder="e.g. Caesar Salad"
+                  />
+                  {editErrors.name && <p className="text-xs text-destructive">{editErrors.name}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-menu-name-zh">中文名称</Label>
+                  <Input
+                    id="edit-menu-name-zh"
+                    value={editForm.nameEn}
+                    onChange={(e) => handleEditFieldChange("nameEn", e.target.value)}
+                    placeholder="例: 凯撒沙拉"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-menu-category">分类 *</Label>
+                  <Select value={selectedEditCategory} onValueChange={handleEditCategorySelect}>
+                    <SelectTrigger id="edit-menu-category">
+                      <SelectValue placeholder="选择已有分类" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categorySuggestions.length === 0 && (
+                        <SelectItem value="" disabled>
+                          暂无分类
+                        </SelectItem>
+                      )}
+                      {categorySuggestions.map((entry) => (
+                        <SelectItem key={entry} value={entry}>
+                          {entry}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    id="edit-menu-new-category"
+                    value={editCustomCategory}
+                    onChange={(e) => handleEditCustomCategoryChange(e.target.value)}
+                    aria-invalid={Boolean(editErrors.category)}
+                    aria-label="新分类"
+                    placeholder="或输入新分类"
+                  />
+                  {editErrors.category && <p className="text-xs text-destructive">{editErrors.category}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-menu-price">售价 (€) *</Label>
+                  <Input
+                    id="edit-menu-price"
+                    inputMode="decimal"
+                    value={editForm.price}
+                    onChange={(e) => handleEditFieldChange("price", e.target.value)}
+                    aria-invalid={Boolean(editErrors.price)}
+                    placeholder="12.90"
+                  />
+                  {editErrors.price && <p className="text-xs text-destructive">{editErrors.price}</p>}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-menu-description">描述</Label>
+                <Textarea
+                  id="edit-menu-description"
+                  value={editForm.description}
+                  onChange={(e) => handleEditFieldChange("description", e.target.value)}
+                  placeholder="菜品亮点、主要原料等信息..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>图片</Label>
+                <ImageUpload
+                  value={editForm.image || null}
+                  onChange={(url) => handleEditFieldChange("image", url ?? "")}
+                  onError={(message) => {
+                    toast({
+                      title: "图片上传失败",
+                      description: message,
+                      variant: "destructive",
+                    })
+                  }}
+                  onUploadingChange={setEditUploading}
+                  disabled={editSubmitting}
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => handleEditDialogToggle(false)}>
+                取消
+              </Button>
+              <Button type="submit" disabled={editSubmitting}>
+                {updateMenuItemMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                保存
               </Button>
             </DialogFooter>
           </form>

@@ -161,9 +161,24 @@ export interface UpdateOrderItemInput {
 }
 
 export interface TransferOrderInput {
+  mode: "split" | "merge"
   sourceTableId: string
   targetTableId: string
-  items?: { id: string; quantity: number }[]
+  items?: { orderItemId: string; quantity: number }[]
+  moveAll?: boolean
+}
+
+export interface TransferOrderResponse {
+  source?: {
+    tableId: string
+    order: OrderSummary | null
+    batches: OrderBatchView[]
+  }
+  target?: {
+    tableId: string
+    order: OrderSummary | null
+    batches: OrderBatchView[]
+  }
 }
 
 // Checkout History Types

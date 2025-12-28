@@ -22,6 +22,7 @@ export type {
   ClearOrderInput,
   UpdateOrderItemInput,
   TransferOrderInput,
+  TransferOrderResponse,
 } from "./api"
 
 // Database Types
