@@ -393,10 +393,11 @@ export function MergeTableDialog({
   const { toast } = useToast()
   const [sourceTableId, setSourceTableId] = useState("")
   const sourceOrderQuery = useTableOrderQuery(sourceTableId)
-  const batches = !sourceTableId || sourceOrderQuery.error
-    ? []
-    : (sourceOrderQuery.data?.batches ?? [])
-  const items = useMemo(() => toTransferableItems(batches as OrderBatchView[]), [batches])
+  const items = useMemo(() => {
+    if (!sourceTableId || sourceOrderQuery.error) return []
+    const orderBatches = (sourceOrderQuery.data?.batches ?? []) as OrderBatchView[]
+    return toTransferableItems(orderBatches)
+  }, [sourceOrderQuery.error, sourceOrderQuery.data?.batches, sourceTableId])
   const sourceOptions = useMemo(
     () =>
       tables

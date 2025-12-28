@@ -3,3 +3,8 @@ export { PosMenuPane } from "./PosMenuPane"
 export { PosOrderSidebar } from "./PosOrderSidebar"
 export { PosCheckoutDialog } from "./PosCheckoutDialog"
 export { PosReceiptPreview } from "./PosReceiptPreview"
+// 新增组件
+export { PosHeader } from "./PosHeader"
+export { PosContent } from "./PosContent"
+export { PosOrderPanel } from "./PosOrderPanel"
+export { PosFooter } from "./PosFooter"
