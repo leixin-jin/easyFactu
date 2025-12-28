@@ -1,22 +1,17 @@
 "use client"
 
-import Link from "next/link"
-import { ArrowLeft, Plus, Search } from "lucide-react"
+import { Plus, Search } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { RestaurantTableView as TableOption } from "@/hooks/useRestaurantTables"
 import Image from "next/image"
 
 import type { MenuItem } from "@/types/pos"
 
 export interface PosMenuPaneProps {
-  selectedTable: string
-  tables: TableOption[]
-  tableNumberParam: string
   searchQuery: string
   onSearchQueryChange: (value: string) => void
   selectedCategory: string
@@ -27,9 +22,6 @@ export interface PosMenuPaneProps {
 }
 
 export function PosMenuPane({
-  selectedTable,
-  tables,
-  tableNumberParam,
   searchQuery,
   onSearchQueryChange,
   selectedCategory,
@@ -38,22 +30,8 @@ export function PosMenuPane({
   filteredItems,
   onAddToCart,
 }: PosMenuPaneProps) {
-  const currentTableNumber =
-    selectedTable && tables.length > 0
-      ? tables.find((t) => t.id === selectedTable)?.number || "未知"
-      : tableNumberParam || ""
-
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-      <div className="flex justify-end">
-        <Link href="/tables">
-          <Button variant="outline" size="sm" className="gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            返回桌台
-          </Button>
-        </Link>
-      </div>
-
       {/* Categories */}
       <Tabs
         value={selectedCategory}
