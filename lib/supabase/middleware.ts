@@ -13,11 +13,15 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // 延迟导入 clientEnv，确保只在 hasEnvVars 检查通过后才读取
+  // 这样在缺少环境变量时可以优雅跳过中间件
+  const { clientEnv } = await import("@/lib/env");
+
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    clientEnv.NEXT_PUBLIC_SUPABASE_URL,
+    clientEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     {
       cookies: {
         getAll() {

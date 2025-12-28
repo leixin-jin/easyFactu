@@ -273,7 +273,6 @@ export function MenuManagement() {
         description: addForm.description.trim() || undefined,
         image: addForm.image.trim() || undefined,
       })
-
       toast({
         title: "菜品已添加",
         description: created?.name ? `${created.name} 已加入 ${created.category}` : "菜品已添加到菜单",
@@ -351,7 +350,6 @@ export function MenuManagement() {
       setDeleteServerError(null)
 
       const removed = await deleteMenuItemMutation.mutateAsync(deleteSelection)
-
       toast({
         title: "菜品已删除",
         description: removed?.name ? `${removed.name} 已标记为下架` : "菜品已隐藏",
