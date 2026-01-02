@@ -468,6 +468,10 @@ return (payload?.data ?? payload) as T
 - [ ] `lib/contracts/` 包含基础 schema
 - [ ] 旧组件路径使用 re-export
 - [ ] 关键 API 使用 withHandler
+- [ ] **Contracts 与 DB 类型对齐验证**：
+  - [ ] 所有 contract 枚举值与 `db/schema.ts` 中的 pgEnum 保持一致
+  - [ ] 所有 contract 可空字段与 DB 表定义保持一致（nullable vs required）
+  - [ ] 所有 contract 必填字段在 API 响应中确实返回
 ```
 
 ---

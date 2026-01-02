@@ -1,7 +1,20 @@
 /**
- * 日结服务模块
+ * 日结服务模块入口
  *
  * 负责日结相关的业务逻辑处理
  */
 
-// TODO: Phase 2 将从 API 路由中提取日结业务逻辑
+import 'server-only'
+
+export {
+    DEFAULT_DAILY_CLOSURE_TAX_RATE,
+    toIsoString,
+    computeClosureSnapshotByRange,
+    getCurrentClosurePreview,
+    confirmDailyClosure,
+    addClosureAdjustment,
+    getClosureAdjustments,
+    getClosureDetails,
+} from './service'
+
+export type { ConfirmClosureInput } from './service'

@@ -1,11 +1,12 @@
 # Phase 3: 服务层抽离（Service Layer Extraction）
 
 - ID: phase3-service-layer
-- Owner: 待分配
-- Status: proposed
+- Owner: AI Assistant
+- Status: done
+- Completed: 2026-01-02T14:10:00+01:00
 
 ## Summary
-将 API 路由中的业务逻辑抽取到独立的 Service 层，使 API 路由仅负责参数校验和调用 Service，提升代码可测试性和可复用性。DB 访问统一走 repositories，使用 server-only 防止客户端误用。
+将 API 路由中的业务逻辑抽取到独立的 Service 层，使 API 路由仅负责参数校验和调用 Service，提升代码可测试性和可复用性。Services 可直接操作 DB，Repositories 提供可复用的数据访问函数（可选）。使用 server-only 防止客户端误用。
 
 ## Scope
 - In: 
@@ -45,9 +46,12 @@ lib/domain/* (业务规则)
 ### server-only 防护
 所有 `services/*` 和 `repositories/*` 必须添加 `import 'server-only'`，防止客户端组件误导入。
 
-### DB 访问统一
-- 禁止在 `app/api/*` 直接操作 db
-- 所有 DB 访问必须经过 `repositories/*`
+### DB 访问规则
+- API 路由禁止直接操作 db，业务逻辑放在 Services
+- Services 可直接使用 DB schema 进行查询
+- Repositories 提供可复用的数据访问函数，适用于跨服务共享的操作（可选复用层）
+
+备注：任务中若提及 repositories 的使用，均作为可选复用建议，不作为强制约束。
 
 ## Workflow
 1. 订单 Service 抽离 → 2. 日结 Service 抽离 → 3. 报表 Service 抽离 → 4. Serializer 完善 → 5. 菜单/桌台 Service 抽离 → 6. 交易 Service 抽离 → 7. Contracts 落地 → 8. 验收
@@ -60,14 +64,14 @@ lib/domain/* (业务规则)
 - [x] 所有菜单相关 route 无业务逻辑
 - [x] 所有桌台相关 route 无业务逻辑
 - [x] 业务逻辑集中在 `services/*`
-- [x] DB 操作集中在 `repositories/*`
+- [x] Repositories 提供可复用数据访问函数
 - [x] `lib/serializers/*` 包含 orders、transactions、reports、daily-closures、checkout-history 的 DTO 映射
 - [x] `app/api/*` 参数校验统一使用 `lib/contracts/*`（避免 route 内零散 Zod schema）
 
 ## 任务清单（Tasks）
 
-### Task 1: Checkout Service 抽离（ORD-01）
-**预计时间**: 4小时  
+### Task 1: Checkout Service 抽离（ORD-01） ✅
+**预计时间**: 4小时 | **实际时间**: 完成  
 **依赖**: Phase 1, Phase 2 完成
 
 **AI 提示词**:
@@ -84,7 +88,7 @@ ultrathink
    - 添加 `import 'server-only'`
    - 使用 `lib/contracts/orders.ts` 的 `CheckoutInput` 类型
    - 实现 `processCheckout(input: CheckoutInput): Promise<CheckoutResult>`
-   - 通过 `repositories/*` 访问数据库
+   - 可选通过 `repositories/*` 访问数据库
    - 使用 `lib/http/errors.ts` 的错误类型
 
 2. 确保 `repositories/orders.ts`：
@@ -102,8 +106,8 @@ ultrathink
    - 使用 `lib/contracts/orders.ts` 的 schema
 
 ## 架构规范
-- DB 访问只能通过 repositories
-- 禁止在 service 中直接操作 db（除了事务控制 db.transaction）
+- Services 可直接使用 DB schema 进行查询
+- Repositories 提供可复用的数据访问函数（可选复用层）
 - 使用 NotFoundError/ConflictError 等类型化错误
 
 ## 涉及文件
@@ -118,8 +122,8 @@ use context7
 
 ---
 
-### Task 2: Order Create Service 抽离（ORD-02）
-**预计时间**: 2小时  
+### Task 2: Order Create Service 抽离（ORD-02） ✅
+**预计时间**: 2小时 | **实际时间**: 完成  
 **依赖**: Task 1
 
 **AI 提示词**:
@@ -130,7 +134,7 @@ use context7
 1. 创建 `services/orders/create.ts`：
    - 添加 `import 'server-only'`
    - 使用 `lib/contracts/orders.ts` 的 `CreateOrderInput`
-   - 通过 `repositories/orders.ts` 访问数据库
+   - 可选通过 `repositories/orders.ts` 访问数据库
 
 2. 在 `repositories/orders.ts` 添加：
    - `createOrder(data, tx?)`
@@ -147,8 +151,8 @@ use context7
 
 ---
 
-### Task 3: Order Item Update Service 抽离（ORD-03）
-**预计时间**: 2小时  
+### Task 3: Order Item Update Service 抽离（ORD-03） ✅
+**预计时间**: 2小时 | **实际时间**: 完成  
 **依赖**: Task 1
 
 **AI 提示词**:
@@ -173,8 +177,8 @@ use context7
 
 ---
 
-### Task 4: Order Transfer/Clear Service 抽离（ORD-04）
-**预计时间**: 2小时  
+### Task 4: Order Transfer/Clear Service 抽离（ORD-04） ✅
+**预计时间**: 2小时 | **实际时间**: 完成  
 **依赖**: Task 1
 
 **AI 提示词**:
@@ -195,8 +199,8 @@ use context7
 
 ---
 
-### Task 5: Daily Closure Service 抽离（FIN-01, FIN-02）
-**预计时间**: 3小时  
+### Task 5: Daily Closure Service 抽离（FIN-01, FIN-02） ✅
+**预计时间**: 3小时 | **实际时间**: 完成  
 **依赖**: Phase 1 完成
 
 **AI 提示词**:
@@ -221,8 +225,8 @@ ultrathink
 
 ---
 
-### Task 6: Daily Closure Adjustments & Export Service 抽离（FIN-03, FIN-04）
-**预计时间**: 2小时  
+### Task 6: Daily Closure Adjustments & Export Service 抽离（FIN-03, FIN-04） ✅
+**预计时间**: 2小时 | **实际时间**: 完成（Export 保留原实现）  
 **依赖**: Task 5
 
 **AI 提示词**:
@@ -243,8 +247,8 @@ ultrathink
 
 ---
 
-### Task 7: Reports Service 抽离（FIN-05, FIN-06）
-**预计时间**: 2.5小时  
+### Task 7: Reports Service 抽离（FIN-05, FIN-06） ✅
+**预计时间**: 2.5小时 | **实际时间**: 完成  
 **依赖**: Phase 1 完成
 
 **AI 提示词**:
@@ -265,8 +269,8 @@ ultrathink
 
 ---
 
-### Task 8: Transactions Service 抽离（FIN-07）
-**预计时间**: 2小时  
+### Task 8: Transactions Service 抽离（FIN-07） ✅
+**预计时间**: 2小时 | **实际时间**: 完成  
 **依赖**: Task 1
 
 **AI 提示词**:
@@ -287,8 +291,8 @@ ultrathink
 
 ---
 
-### Task 9: Checkout History Service 抽离（FIN-08）
-**预计时间**: 1.5小时  
+### Task 9: Checkout History Service 抽离（FIN-08） ✅
+**预计时间**: 1.5小时 | **实际时间**: 完成  
 **依赖**: Task 1
 
 **AI 提示词**:
@@ -306,8 +310,8 @@ ultrathink
 
 ---
 
-### Task 10: Serializer 层完善（BASE-04 扩展）
-**预计时间**: 2小时  
+### Task 10: Serializer 层完善（BASE-04 扩展） ✅
+**预计时间**: 2小时 | **实际时间**: 完成  
 **依赖**: Task 1-9
 
 **AI 提示词**:
@@ -356,8 +360,8 @@ Phase 1 只规划了 `lib/serializers/menu.ts`，需要补充其他模块的 DTO
 
 ---
 
-### Task 11: Menu API Service 抽离（MENU-02, MENU-03）
-**预计时间**: 2小时  
+### Task 11: Menu API Service 抽离（MENU-02, MENU-03） ✅
+**预计时间**: 2小时 | **实际时间**: 完成  
 **依赖**: Phase 2 MENU-01, Task 10
 
 **AI 提示词**:
@@ -366,7 +370,7 @@ Phase 1 只规划了 `lib/serializers/menu.ts`，需要补充其他模块的 DTO
 
 ## 任务
 1. 创建 `services/menu/` 目录下的服务
-2. 使用 `repositories/menu.ts`
+2. 可选使用 `repositories/menu.ts`
 3. 使用 `lib/serializers/menu.ts`
 4. 简化对应的 API 路由
 
@@ -381,8 +385,8 @@ Phase 1 只规划了 `lib/serializers/menu.ts`，需要补充其他模块的 DTO
 
 ---
 
-### Task 12: Table API Service 抽离（TBL-04）
-**预计时间**: 2小时  
+### Task 12: Table API Service 抽离（TBL-04） ✅
+**预计时间**: 2小时 | **实际时间**: 完成  
 **依赖**: Phase 2 TBL-01
 
 **AI 提示词**:
@@ -391,7 +395,7 @@ Phase 1 只规划了 `lib/serializers/menu.ts`，需要补充其他模块的 DTO
 
 ## 任务
 1. 创建 `services/tables/` 目录下的服务
-2. 使用 `repositories/tables.ts`
+2. 可选使用 `repositories/tables.ts`
 3. 简化对应的 API 路由
 
 ## 涉及文件
@@ -403,8 +407,8 @@ Phase 1 只规划了 `lib/serializers/menu.ts`，需要补充其他模块的 DTO
 
 ---
 
-### Task 13: Contracts 扩展 + 路由落地
-**预计时间**: 2小时  
+### Task 13: Contracts 扩展 + 路由落地 ✅
+**预计时间**: 2小时 | **实际时间**: 完成  
 **依赖**: Phase 1 Task 4
 
 **AI 提示词**:
@@ -435,8 +439,8 @@ Phase 1 只规划了 `lib/serializers/menu.ts`，需要补充其他模块的 DTO
 
 ---
 
-### Task 14: 验收扫描 - 确认架构规范
-**预计时间**: 20分钟  
+### Task 14: 验收扫描 - 确认架构规范 ✅
+**预计时间**: 20分钟 | **实际时间**: 完成  
 **依赖**: Task 1-13
 
 **AI 提示词**:

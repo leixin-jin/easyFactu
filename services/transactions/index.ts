@@ -1,7 +1,7 @@
 /**
- * 交易服务模块
- *
- * 负责交易记录相关的业务逻辑处理
+ * 交易服务模块入口
  */
 
-// TODO: Phase 2 将从 API 路由中提取交易业务逻辑
+import 'server-only'
+
+export { getTransactionDetails, reverseTransaction } from './service'

@@ -1,119 +1,59 @@
-import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+/**
+ * 交易详情 API 路由
+ * 
+ * GET /api/transactions/[id] - 获取交易详情
+ */
 
-import { getDb } from "@/lib/db";
-import {
-  transactions,
-  transactionItems,
-  orders,
-  restaurantTables,
-} from "@/db/schema";
-import { parseMoney } from "@/lib/money";
+import { NextRequest, NextResponse } from 'next/server'
 
-type RouteParams = { params: Promise<{ id: string }> };
+import { getDb } from '@/lib/db'
+import { getTransactionDetails } from '@/services/transactions'
+import { AppError } from '@/lib/http/errors'
+import { uuidParamSchema } from '@/lib/contracts/common'
+
+type RouteParams = { params: Promise<{ id: string }> }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
-    const { id } = await params;
+    const { id } = await params
 
-    if (!id || typeof id !== "string") {
+    // 验证 ID 格式（使用 contracts）
+    const idParse = uuidParamSchema.safeParse({ id })
+    if (!idParse.success) {
       return NextResponse.json(
-        { error: "Transaction ID is required", code: "INVALID_ID" },
-        { status: 400 },
-      );
+        { error: 'Transaction ID is required', code: 'VALIDATION_ERROR' },
+        { status: 400 }
+      )
     }
 
-    const db = getDb();
+    // 调用 Service 处理业务逻辑
+    const db = getDb()
+    const result = await getTransactionDetails(db, id)
 
-    const [transaction] = await db
-      .select({
-        id: transactions.id,
-        type: transactions.type,
-        category: transactions.category,
-        amount: transactions.amount,
-        description: transactions.description,
-        date: transactions.date,
-        paymentMethod: transactions.paymentMethod,
-        orderId: transactions.orderId,
-        createdAt: transactions.createdAt,
-      })
-      .from(transactions)
-      .where(eq(transactions.id, id))
-      .limit(1);
-
-    if (!transaction) {
-      return NextResponse.json(
-        { error: "Transaction not found", code: "TRANSACTION_NOT_FOUND" },
-        { status: 404 },
-      );
-    }
-
-    const items = await db
-      .select({
-        id: transactionItems.id,
-        orderItemId: transactionItems.orderItemId,
-        quantity: transactionItems.quantity,
-        menuItemId: transactionItems.menuItemId,
-        nameSnapshot: transactionItems.nameSnapshot,
-        unitPrice: transactionItems.unitPrice,
-        createdAt: transactionItems.createdAt,
-      })
-      .from(transactionItems)
-      .where(eq(transactionItems.transactionId, id));
-
-    let tableNumber: string | null = null;
-    if (transaction.orderId) {
-      const [order] = await db
-        .select({
-          tableId: orders.tableId,
-        })
-        .from(orders)
-        .where(eq(orders.id, transaction.orderId))
-        .limit(1);
-
-      if (order?.tableId) {
-        const [table] = await db
-          .select({
-            number: restaurantTables.number,
-          })
-          .from(restaurantTables)
-          .where(eq(restaurantTables.id, order.tableId))
-          .limit(1);
-
-        tableNumber = table?.number ?? null;
-      }
-    }
-
-    return NextResponse.json({
-      transaction: {
-        id: transaction.id,
-        type: transaction.type,
-        category: transaction.category,
-        amount: parseMoney(transaction.amount),
-        description: transaction.description,
-        date: transaction.date,
-        paymentMethod: transaction.paymentMethod,
-        orderId: transaction.orderId,
-        createdAt: transaction.createdAt.toISOString(),
-        tableNumber,
-      },
-      items: items.map((item) => ({
-        id: item.id,
-        orderItemId: item.orderItemId,
-        quantity: item.quantity,
-        menuItemId: item.menuItemId,
-        nameSnapshot: item.nameSnapshot,
-        unitPrice: parseMoney(item.unitPrice),
-        createdAt: item.createdAt.toISOString(),
-      })),
-      hasItems: items.length > 0,
-    });
+    return NextResponse.json(result)
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("GET /api/transactions/[id] error", err);
+    // 处理 AppError 及其子类
+    if (err instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+          detail: err.detail,
+        },
+        { status: err.statusCode }
+      )
+    }
+
+    // 处理未知错误
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('GET /api/transactions/[id] error', err)
     return NextResponse.json(
-      { error: "Failed to get transaction", detail: message },
-      { status: 500 },
-    );
+      {
+        error: 'Failed to get transaction',
+        code: 'INTERNAL_ERROR',
+        detail: message,
+      },
+      { status: 500 }
+    )
   }
 }

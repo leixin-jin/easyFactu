@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
-import { z } from "zod";
 
 import { getDb } from "@/lib/db";
-import { orders, restaurantTables } from "@/db/schema";
-
-const updateStatusSchema = z.object({
-  status: z.enum(["idle", "occupied"]),
-});
+import { updateTableStatus, deleteTable } from "@/services/tables";
+import { updateTableStatusInputSchema } from "@/lib/contracts/tables";
+import { uuidParamSchema } from "@/lib/contracts/common";
+import { AppError, NotFoundError } from "@/lib/http/errors";
 
 export async function PATCH(
   req: NextRequest,
@@ -15,7 +12,7 @@ export async function PATCH(
 ) {
   const { id } = await context.params;
 
-  const idParse = z.string().uuid().safeParse(id);
+  const idParse = uuidParamSchema.safeParse({ id });
   if (!idParse.success) {
     return NextResponse.json(
       { error: "Invalid table id" },
@@ -25,7 +22,7 @@ export async function PATCH(
 
   try {
     const json = await req.json().catch(() => ({}));
-    const parseResult = updateStatusSchema.safeParse(json);
+    const parseResult = updateTableStatusInputSchema.safeParse(json);
 
     if (!parseResult.success) {
       return NextResponse.json(
@@ -37,30 +34,18 @@ export async function PATCH(
       );
     }
 
-    const { status } = parseResult.data;
     const db = getDb();
+    const updated = await updateTableStatus(db, id, parseResult.data.status);
 
-    const [updated] = await db
-      .update(restaurantTables)
-      .set({ status })
-      .where(eq(restaurantTables.id, id))
-      .returning({
-        id: restaurantTables.id,
-        number: restaurantTables.number,
-        status: restaurantTables.status,
-        area: restaurantTables.area,
-        capacity: restaurantTables.capacity,
-      });
-
-    if (!updated) {
+    return NextResponse.json(updated, { status: 200 });
+  } catch (err: unknown) {
+    if (err instanceof NotFoundError) {
       return NextResponse.json(
         { error: "Table not found" },
         { status: 404 },
       );
     }
 
-    return NextResponse.json(updated, { status: 200 });
-  } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : String(err);
     console.error("PATCH /api/restaurant-tables/[id] error", err);
@@ -80,7 +65,7 @@ export async function DELETE(
 ) {
   const { id } = await context.params;
 
-  const idParse = z.string().uuid().safeParse(id);
+  const idParse = uuidParamSchema.safeParse({ id });
   if (!idParse.success) {
     return NextResponse.json(
       { error: "Invalid table id" },
@@ -90,14 +75,18 @@ export async function DELETE(
 
   try {
     const db = getDb();
+    const deleted = await deleteTable(db, id);
 
-    const [openOrder] = await db
-      .select({ id: orders.id })
-      .from(orders)
-      .where(and(eq(orders.tableId, id), eq(orders.status, "open")))
-      .limit(1);
+    return NextResponse.json(deleted, { status: 200 });
+  } catch (err: unknown) {
+    if (err instanceof NotFoundError) {
+      return NextResponse.json(
+        { error: "Table not found" },
+        { status: 404 },
+      );
+    }
 
-    if (openOrder) {
+    if (err instanceof AppError && err.code === "TABLE_HAS_OPEN_ORDER") {
       return NextResponse.json(
         {
           error: "Table has open order",
@@ -107,23 +96,6 @@ export async function DELETE(
       );
     }
 
-    const [deleted] = await db
-      .delete(restaurantTables)
-      .where(eq(restaurantTables.id, id))
-      .returning({
-        id: restaurantTables.id,
-        number: restaurantTables.number,
-      });
-
-    if (!deleted) {
-      return NextResponse.json(
-        { error: "Table not found" },
-        { status: 404 },
-      );
-    }
-
-    return NextResponse.json(deleted, { status: 200 });
-  } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("DELETE /api/restaurant-tables/[id] error", err);
     return NextResponse.json(

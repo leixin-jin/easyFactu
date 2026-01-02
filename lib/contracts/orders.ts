@@ -54,10 +54,12 @@ export type CheckoutInput = z.infer<typeof checkoutInputSchema>
 
 /**
  * 创建订单项输入
+ * notes 备注字段最大 500 字符
  */
 export const createOrderItemInputSchema = z.object({
     menuItemId: z.string().uuid(),
     quantity: z.number().int().positive(),
+    notes: z.string().max(500, '备注最多 500 字符').optional().nullable(),
 })
 export type CreateOrderItemInput = z.infer<typeof createOrderItemInputSchema>
 
@@ -67,8 +69,17 @@ export type CreateOrderItemInput = z.infer<typeof createOrderItemInputSchema>
 export const createOrderInputSchema = z.object({
     tableId: z.string().uuid(),
     items: z.array(createOrderItemInputSchema).min(1),
+    paymentMethod: z.string().min(1).optional(),
 })
 export type CreateOrderInput = z.infer<typeof createOrderInputSchema>
+
+/**
+ * 清空订单输入 Schema
+ */
+export const clearOrderInputSchema = z.object({
+    tableId: z.string().uuid(),
+})
+export type ClearOrderInput = z.infer<typeof clearOrderInputSchema>
 
 /**
  * 更新订单输入 Schema
@@ -81,18 +92,54 @@ export type UpdateOrderInput = z.infer<typeof updateOrderInputSchema>
 
 /**
  * 订单响应 Schema（用于序列化）
+ * 注：tableId 可为空（数据库允许），totalAmount/paidAmount 为可选（兼容旧数据）
  */
 export const orderResponseSchema = z.object({
     id: z.string().uuid(),
-    tableId: z.string().uuid(),
+    tableId: z.string().uuid().nullable(),
     status: orderStatusSchema,
     subtotal: z.number(),
     discount: z.number(),
     total: z.number(),
-    totalAmount: z.number(),
-    paidAmount: z.number(),
+    totalAmount: z.number().optional(),
+    paidAmount: z.number().optional(),
     paymentMethod: z.string().nullable(),
     createdAt: z.string(),
     closedAt: z.string().nullable(),
 })
 export type OrderResponse = z.infer<typeof orderResponseSchema>
+
+/**
+ * 订单项更新操作类型
+ */
+export const orderItemUpdateTypeSchema = z.enum(['decrement', 'remove'])
+export type OrderItemUpdateType = z.infer<typeof orderItemUpdateTypeSchema>
+
+/**
+ * 订单项更新输入 Schema
+ */
+export const updateOrderItemInputSchema = z.object({
+    type: orderItemUpdateTypeSchema,
+})
+export type UpdateOrderItemInput = z.infer<typeof updateOrderItemInputSchema>
+
+/**
+ * 订单转移项 Schema
+ */
+export const transferItemSchema = z.object({
+    orderItemId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+})
+export type TransferItem = z.infer<typeof transferItemSchema>
+
+/**
+ * 订单转移输入 Schema
+ */
+export const orderTransferInputSchema = z.object({
+    mode: z.enum(['split', 'merge']),
+    sourceTableId: z.string().uuid(),
+    targetTableId: z.string().uuid(),
+    items: z.array(transferItemSchema).default([]),
+    moveAll: z.boolean().optional().default(false),
+})
+export type OrderTransferInput = z.infer<typeof orderTransferInputSchema>

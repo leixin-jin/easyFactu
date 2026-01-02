@@ -13,12 +13,26 @@
 
 import 'server-only'
 
-// Services 将在后续阶段逐步迁移实现
-// TODO: Phase 2 迁移后取消以下注释
-// export * from './orders'
-// export * from './daily-closures'
-// export * from './menu'
-// export * from './tables'
-// export * from './reports'
-// export * from './transactions'
+// 订单服务
+export * from './orders'
 
+// 日结服务
+export * from './daily-closures'
+
+// 报表服务
+export * from './reports'
+
+// 交易服务
+export * from './transactions'
+
+// 菜单服务
+export * from './menu'
+
+// 桌台服务
+export * from './tables'
+
+// 结账历史服务
+export * from './checkout-history'
+
+// 餐厅设置服务
+export * from './restaurant-settings'

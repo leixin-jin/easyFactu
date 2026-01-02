@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { z } from "zod"
 import ExcelJS from "exceljs"
 import { format } from "date-fns"
 
 import { getDb } from "@/lib/db"
-import { buildReportsPayload } from "@/lib/reports/aggregate"
 import type { ReportGranularity } from "@/lib/reports/types"
+import { getReports } from "@/services/reports"
+import { reportExportQuerySchema } from "@/lib/contracts/reports"
 
 export const runtime = "nodejs"
-
-const querySchema = z.object({
-  format: z.enum(["xlsx"]).optional().default("xlsx"),
-  granularity: z.enum(["day", "week", "month", "year"]).optional().default("month"),
-})
 
 function jsonError(status: number, code: string, error: string, detail?: unknown) {
   return NextResponse.json({ error, code, detail }, { status })
@@ -91,7 +86,10 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const formatParam = url.searchParams.get("format") || undefined
   const granularityParam = url.searchParams.get("granularity") || undefined
-  const queryParse = querySchema.safeParse({ format: formatParam, granularity: granularityParam })
+  const queryParse = reportExportQuerySchema.safeParse({
+    format: formatParam,
+    granularity: granularityParam,
+  })
 
   if (!queryParse.success) {
     return jsonError(400, "INVALID_QUERY", "Invalid query parameters", queryParse.error.flatten())
@@ -99,10 +97,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getDb()
-    const payload = await buildReportsPayload({
-      db: db as any,
-      granularity: queryParse.data.granularity as ReportGranularity,
-    })
+    const payload = await getReports(
+      db,
+      queryParse.data.granularity as ReportGranularity
+    )
 
     const buffer = await exportXlsx(payload)
     const filenameBase = buildFilenameBase({
@@ -123,4 +121,3 @@ export async function GET(req: NextRequest) {
     return jsonError(500, "INTERNAL_ERROR", "Failed to export reports", message)
   }
 }
-

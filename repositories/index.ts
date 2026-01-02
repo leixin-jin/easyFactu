@@ -13,12 +13,20 @@
 
 import 'server-only'
 
-// Repositories 将在后续阶段逐步迁移实现
-// TODO: Phase 2 迁移后取消以下注释
-// export * from './orders'
-// export * from './order-items'
-// export * from './transactions'
-// export * from './menu'
-// export * from './tables'
-// export * from './daily-closures'
+// 订单数据访问
+export * from './orders'
 
+// 订单项数据访问
+export * from './order-items'
+
+// 交易数据访问
+export * from './transactions'
+
+// 桌台数据访问
+export * from './tables'
+
+// 菜单数据访问
+export * from './menu'
+
+// 日结数据访问
+export * from './daily-closures'

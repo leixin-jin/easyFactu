@@ -1,21 +1,12 @@
 import { NextResponse } from "next/server";
-import { eq, desc } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
-import { menuItems } from "@/db/schema";
-import { toMenuItemResponse } from "@/app/api/menu-items/utils";
+import { getDeletedMenuItems } from "@/services/menu";
 
 export async function GET() {
   try {
     const db = getDb();
-
-    const rows = await db
-      .select()
-      .from(menuItems)
-      .where(eq(menuItems.available, false))
-      .orderBy(desc(menuItems.updatedAt));
-
-    const items = rows.map(toMenuItemResponse);
+    const items = await getDeletedMenuItems(db);
 
     return NextResponse.json({ items }, { status: 200 });
   } catch (err: unknown) {

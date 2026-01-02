@@ -9,6 +9,18 @@ import { z } from 'zod'
  */
 const decimalPattern = /^\d+(\.\d{1,2})?$/
 
+function optionalTrimmedStringToNull(maxLength: number) {
+    return z
+        .string()
+        .trim()
+        .max(maxLength)
+        .optional()
+        .transform((value) => {
+            if (value === undefined) return undefined
+            return value.length > 0 ? value : null
+        })
+}
+
 /**
  * 菜单项价格 Schema
  */
@@ -39,26 +51,11 @@ const priceSchema = z
  */
 export const createMenuItemInputSchema = z.object({
     name: z.string().trim().min(1, '菜品名称不能为空').max(120),
-    nameEn: z
-        .string()
-        .trim()
-        .max(120)
-        .optional()
-        .transform((value) => (value && value.length > 0 ? value : null)),
+    nameEn: optionalTrimmedStringToNull(120),
     category: z.string().trim().min(1, '分类不能为空').max(120),
     price: priceSchema,
-    description: z
-        .string()
-        .trim()
-        .max(500)
-        .optional()
-        .transform((value) => (value && value.length > 0 ? value : null)),
-    image: z
-        .string()
-        .trim()
-        .max(512)
-        .optional()
-        .transform((value) => (value && value.length > 0 ? value : null)),
+    description: optionalTrimmedStringToNull(500),
+    image: optionalTrimmedStringToNull(512),
 })
 export type CreateMenuItemInput = z.infer<typeof createMenuItemInputSchema>
 
@@ -67,28 +64,16 @@ export type CreateMenuItemInput = z.infer<typeof createMenuItemInputSchema>
  */
 export const updateMenuItemInputSchema = z.object({
     name: z.string().trim().min(1).max(120).optional(),
-    nameEn: z
-        .string()
-        .trim()
-        .max(120)
-        .optional()
-        .transform((value) => (value && value.length > 0 ? value : null)),
+    nameEn: optionalTrimmedStringToNull(120),
     category: z.string().trim().min(1).max(120).optional(),
     price: priceSchema.optional(),
-    description: z
-        .string()
-        .trim()
-        .max(500)
-        .optional()
-        .transform((value) => (value && value.length > 0 ? value : null)),
-    image: z
-        .string()
-        .trim()
-        .max(512)
-        .optional()
-        .transform((value) => (value && value.length > 0 ? value : null)),
+    description: optionalTrimmedStringToNull(500),
+    image: optionalTrimmedStringToNull(512),
     available: z.boolean().optional(),
-})
+}).refine(
+    (data) => Object.keys(data).length > 0,
+    { message: 'At least one field must be provided for update' }
+)
 export type UpdateMenuItemInput = z.infer<typeof updateMenuItemInputSchema>
 
 /**
