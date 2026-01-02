@@ -164,6 +164,30 @@ export async function updateMenuItem(
         throw new NotFoundError('菜品', id)
     }
 
+    const shouldCheckDuplicate =
+        input.name !== undefined || input.category !== undefined
+    if (shouldCheckDuplicate) {
+        const candidateName = input.name ?? existing.name
+        const candidateCategory = input.category ?? existing.category
+
+        const [duplicate] = await db
+            .select({ id: menuItems.id })
+            .from(menuItems)
+            .where(
+                and(
+                    eq(menuItems.name, candidateName),
+                    eq(menuItems.category, candidateCategory),
+                    eq(menuItems.available, true),
+                    ne(menuItems.id, id)
+                )
+            )
+            .limit(1)
+
+        if (duplicate) {
+            throw new ConflictError('该分类下已存在同名菜品')
+        }
+    }
+
     // 构建更新数据
     const updateData: Partial<typeof menuItems.$inferInsert> = {}
     if (input.name !== undefined) updateData.name = input.name

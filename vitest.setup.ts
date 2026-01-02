@@ -1,7 +1,10 @@
 import "@testing-library/jest-dom/vitest"
 import { cleanup } from "@testing-library/react"
-import { afterEach, beforeAll, afterAll } from "vitest"
+import { afterEach, beforeAll, afterAll, vi } from "vitest"
 import { server } from "./__tests__/mocks/server"
+
+// Next.js server-only marker throws in non-RSC test runs; stub it for Vitest.
+vi.mock("server-only", () => ({}))
 
 if (typeof HTMLElement !== "undefined") {
   if (!HTMLElement.prototype.hasPointerCapture) {

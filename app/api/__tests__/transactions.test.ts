@@ -20,6 +20,9 @@ const mockDb = {
   select: vi.fn(),
   transaction: vi.fn((fn) => fn(mockTx)),
 }
+const TRANSACTION_ID = "11111111-1111-1111-1111-111111111111"
+const MISSING_TRANSACTION_ID = "22222222-2222-2222-2222-222222222222"
+const AA_TRANSACTION_ID = "33333333-3333-3333-3333-333333333333"
 
 describe("/api/transactions/[id]", () => {
   beforeEach(() => {
@@ -37,8 +40,8 @@ describe("/api/transactions/[id]", () => {
         }),
       })
 
-      const request = new NextRequest("http://localhost/api/transactions/non-existent-id")
-      const params = { params: Promise.resolve({ id: "non-existent-id" }) }
+      const request = new NextRequest(`http://localhost/api/transactions/${MISSING_TRANSACTION_ID}`)
+      const params = { params: Promise.resolve({ id: MISSING_TRANSACTION_ID }) }
       const response = await GET(request, params)
 
       expect(response.status).toBe(404)
@@ -48,7 +51,7 @@ describe("/api/transactions/[id]", () => {
 
     it("should return transaction detail with items", async () => {
       const mockTransaction = {
-        id: "txn-1",
+        id: TRANSACTION_ID,
         type: "income",
         category: "POS checkout",
         amount: "100.00",
@@ -99,20 +102,20 @@ describe("/api/transactions/[id]", () => {
           }),
         })
 
-      const request = new NextRequest("http://localhost/api/transactions/txn-1")
-      const params = { params: Promise.resolve({ id: "txn-1" }) }
+      const request = new NextRequest(`http://localhost/api/transactions/${TRANSACTION_ID}`)
+      const params = { params: Promise.resolve({ id: TRANSACTION_ID }) }
       const response = await GET(request, params)
       const data = await response.json()
 
       expect(response.status).toBe(200)
-      expect(data.transaction.id).toBe("txn-1")
+      expect(data.transaction.id).toBe(TRANSACTION_ID)
       expect(data.items).toHaveLength(1)
       expect(data.hasItems).toBe(true)
     })
 
     it("should return hasItems=false when no items", async () => {
       const mockTransaction = {
-        id: "txn-1",
+        id: TRANSACTION_ID,
         type: "income",
         category: "POS checkout",
         amount: "100.00",
@@ -137,8 +140,8 @@ describe("/api/transactions/[id]", () => {
           }),
         })
 
-      const request = new NextRequest("http://localhost/api/transactions/txn-1")
-      const params = { params: Promise.resolve({ id: "txn-1" }) }
+      const request = new NextRequest(`http://localhost/api/transactions/${TRANSACTION_ID}`)
+      const params = { params: Promise.resolve({ id: TRANSACTION_ID }) }
       const response = await GET(request, params)
       const data = await response.json()
 
@@ -157,10 +160,10 @@ describe("/api/transactions/[id]", () => {
         }),
       })
 
-      const request = new NextRequest("http://localhost/api/transactions/non-existent-id/reverse", {
+      const request = new NextRequest(`http://localhost/api/transactions/${MISSING_TRANSACTION_ID}/reverse`, {
         method: "POST",
       })
-      const params = { params: Promise.resolve({ id: "non-existent-id" }) }
+      const params = { params: Promise.resolve({ id: MISSING_TRANSACTION_ID }) }
       const response = await REVERSE(request, params)
 
       expect(response.status).toBe(404)
@@ -170,7 +173,7 @@ describe("/api/transactions/[id]", () => {
 
     it("should reject reversal if no transaction items", async () => {
       const mockTransaction = {
-        id: "txn-1",
+        id: TRANSACTION_ID,
         type: "income",
         amount: "100.00",
         orderId: "order-1",
@@ -191,10 +194,10 @@ describe("/api/transactions/[id]", () => {
           }),
         })
 
-      const request = new NextRequest("http://localhost/api/transactions/txn-1/reverse", {
+      const request = new NextRequest(`http://localhost/api/transactions/${TRANSACTION_ID}/reverse`, {
         method: "POST",
       })
-      const params = { params: Promise.resolve({ id: "txn-1" }) }
+      const params = { params: Promise.resolve({ id: TRANSACTION_ID }) }
       const response = await REVERSE(request, params)
 
       expect(response.status).toBe(400)
@@ -204,7 +207,7 @@ describe("/api/transactions/[id]", () => {
 
     it("should return 409 when table has different open order (regardless of table status)", async () => {
       const mockTransaction = {
-        id: "txn-1",
+        id: TRANSACTION_ID,
         type: "income",
         amount: "100.00",
         orderId: "order-1",
@@ -261,10 +264,10 @@ describe("/api/transactions/[id]", () => {
           }),
         })
 
-      const request = new NextRequest("http://localhost/api/transactions/txn-1/reverse", {
+      const request = new NextRequest(`http://localhost/api/transactions/${TRANSACTION_ID}/reverse`, {
         method: "POST",
       })
-      const params = { params: Promise.resolve({ id: "txn-1" }) }
+      const params = { params: Promise.resolve({ id: TRANSACTION_ID }) }
       const response = await REVERSE(request, params)
 
       expect(response.status).toBe(409)
@@ -274,7 +277,7 @@ describe("/api/transactions/[id]", () => {
 
     it("should successfully reverse transaction and reopen order", async () => {
       const mockTransaction = {
-        id: "txn-1",
+        id: TRANSACTION_ID,
         type: "income",
         amount: "50.00",
         orderId: "order-1",
@@ -370,10 +373,10 @@ describe("/api/transactions/[id]", () => {
         where: vi.fn().mockResolvedValue(undefined),
       })
 
-      const request = new NextRequest("http://localhost/api/transactions/txn-1/reverse", {
+      const request = new NextRequest(`http://localhost/api/transactions/${TRANSACTION_ID}/reverse`, {
         method: "POST",
       })
-      const params = { params: Promise.resolve({ id: "txn-1" }) }
+      const params = { params: Promise.resolve({ id: TRANSACTION_ID }) }
       const response = await REVERSE(request, params)
       const data = await response.json()
 
@@ -385,7 +388,7 @@ describe("/api/transactions/[id]", () => {
 
     it("should reject non-income transactions", async () => {
       const mockTransaction = {
-        id: "txn-1",
+        id: TRANSACTION_ID,
         type: "expense",
         amount: "100.00",
         orderId: "order-1",
@@ -400,10 +403,10 @@ describe("/api/transactions/[id]", () => {
         }),
       })
 
-      const request = new NextRequest("http://localhost/api/transactions/txn-1/reverse", {
+      const request = new NextRequest(`http://localhost/api/transactions/${TRANSACTION_ID}/reverse`, {
         method: "POST",
       })
-      const params = { params: Promise.resolve({ id: "txn-1" }) }
+      const params = { params: Promise.resolve({ id: TRANSACTION_ID }) }
       const response = await REVERSE(request, params)
 
       expect(response.status).toBe(400)
@@ -414,7 +417,7 @@ describe("/api/transactions/[id]", () => {
     it("should rollback paid_quantity for AA partial checkout items", async () => {
       // AA 结账场景：只有部分菜品被结账
       const mockTransaction = {
-        id: "txn-aa",
+        id: AA_TRANSACTION_ID,
         type: "income",
         amount: "25.00",
         orderId: "order-1",
@@ -515,10 +518,10 @@ describe("/api/transactions/[id]", () => {
         where: vi.fn().mockResolvedValue(undefined),
       })
 
-      const request = new NextRequest("http://localhost/api/transactions/txn-aa/reverse", {
+      const request = new NextRequest(`http://localhost/api/transactions/${AA_TRANSACTION_ID}/reverse`, {
         method: "POST",
       })
-      const params = { params: Promise.resolve({ id: "txn-aa" }) }
+      const params = { params: Promise.resolve({ id: AA_TRANSACTION_ID }) }
       const response = await REVERSE(request, params)
       const data = await response.json()
 
@@ -548,7 +551,7 @@ describe("/api/transactions/[id]", () => {
 
     it("should reject reversal when transaction has no orderId", async () => {
       const mockTransaction = {
-        id: "txn-1",
+        id: TRANSACTION_ID,
         type: "income",
         amount: "100.00",
         orderId: null,
@@ -573,10 +576,10 @@ describe("/api/transactions/[id]", () => {
           }),
         })
 
-      const request = new NextRequest("http://localhost/api/transactions/txn-1/reverse", {
+      const request = new NextRequest(`http://localhost/api/transactions/${TRANSACTION_ID}/reverse`, {
         method: "POST",
       })
-      const params = { params: Promise.resolve({ id: "txn-1" }) }
+      const params = { params: Promise.resolve({ id: TRANSACTION_ID }) }
       const response = await REVERSE(request, params)
 
       expect(response.status).toBe(400)

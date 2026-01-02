@@ -18,7 +18,7 @@ import {
     restaurantTables,
 } from '@/db/schema'
 import { parseMoney, toMoneyString } from '@/lib/money'
-import { NotFoundError, ConflictError, ValidationError } from '@/lib/http/errors'
+import { AppError, NotFoundError } from '@/lib/http/errors'
 
 // 数据库类型定义
 type DbClient = NodePgDatabase<typeof schema>
@@ -47,7 +47,11 @@ export async function getTransactionDetails(
         .limit(1)
 
     if (!transaction) {
-        throw new NotFoundError('交易', transactionId)
+        throw new AppError(
+            'TRANSACTION_NOT_FOUND',
+            404,
+            `交易 ${transactionId} 不存在`
+        )
     }
 
     const items = await db
@@ -133,13 +137,19 @@ export async function reverseTransaction(
             .limit(1)
 
         if (!transaction) {
-            throw new NotFoundError('交易', transactionId)
+            throw new AppError(
+                'TRANSACTION_NOT_FOUND',
+                404,
+                `交易 ${transactionId} 不存在`
+            )
         }
 
         if (transaction.type !== 'income') {
-            throw new ValidationError('Only income transactions can be reversed', {
-                code: 'INVALID_TRANSACTION_TYPE',
-            })
+            throw new AppError(
+                'INVALID_TRANSACTION_TYPE',
+                400,
+                'Only income transactions can be reversed'
+            )
         }
 
         const items = await tx
@@ -153,15 +163,19 @@ export async function reverseTransaction(
             .where(eq(transactionItems.transactionId, transactionId))
 
         if (items.length === 0) {
-            throw new ValidationError('该结算单无法反结算（缺少明细）', {
-                code: 'NO_TRANSACTION_ITEMS',
-            })
+            throw new AppError(
+                'NO_TRANSACTION_ITEMS',
+                400,
+                '该结算单无法反结算（缺少明细）'
+            )
         }
 
         if (!transaction.orderId) {
-            throw new ValidationError('Transaction has no associated order', {
-                code: 'NO_ORDER_ID',
-            })
+            throw new AppError(
+                'NO_ORDER_ID',
+                400,
+                'Transaction has no associated order'
+            )
         }
 
         const [order] = await tx
@@ -205,7 +219,11 @@ export async function reverseTransaction(
                 .limit(1)
 
             if (existingOpenOrder && existingOpenOrder.id !== order.id) {
-                throw new ConflictError('桌台已有其他打开的订单，无法反结算')
+                throw new AppError(
+                    'TABLE_HAS_OPEN_ORDER',
+                    409,
+                    '桌台已有其他打开的订单，无法反结算'
+                )
             }
         }
 
