@@ -117,8 +117,7 @@ export async function createMenuItem(db: DbClient, input: CreateMenuItemInput) {
             and(
                 eq(menuItems.name, name),
                 eq(menuItems.category, category),
-                eq(menuItems.available, true),
-                ne(menuItems.id, id)
+                eq(menuItems.available, true)
             )
         )
         .limit(1)

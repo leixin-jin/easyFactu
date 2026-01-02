@@ -13,7 +13,11 @@ import type * as schema from '@/db/schema'
 import { orders, restaurantTables } from '@/db/schema'
 import { parseMoney } from '@/lib/money'
 import { AppError, NotFoundError, ConflictError } from '@/lib/http/errors'
-import type { CreateTableInput, UpdateTableInput } from '@/lib/contracts/tables'
+import type {
+    CreateTableInput,
+    UpdateTableInput,
+    TableStatus,
+} from '@/lib/contracts/tables'
 
 // 数据库类型定义
 type DbClient = NodePgDatabase<typeof schema>
@@ -25,7 +29,7 @@ export interface TableResponse {
     id: string
     number: string
     capacity: number
-    status: string
+    status: TableStatus
     area: string | null
     amount: number | null
 }
@@ -177,7 +181,7 @@ export async function updateTable(
 export async function updateTableStatus(
     db: DbClient,
     id: string,
-    status: string
+    status: TableStatus
 ) {
     const [updated] = await db
         .update(restaurantTables)
