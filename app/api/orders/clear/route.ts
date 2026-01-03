@@ -1,101 +1,61 @@
-import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
-import { z } from "zod";
+/**
+ * 清空订单 API 路由
+ * 
+ * POST /api/orders/clear - 清空桌台订单
+ */
 
-import { getDb } from "@/lib/db";
-import { orderItems, orders, restaurantTables } from "@/db/schema";
+import { NextRequest, NextResponse } from 'next/server'
 
-const clearOrderSchema = z.object({
-  tableId: z.string().uuid(),
-});
+import { getDb } from '@/lib/db'
+import { clearTableOrder } from '@/services/orders/clear'
+import { AppError } from '@/lib/http/errors'
+import { clearOrderInputSchema } from '@/lib/contracts/orders'
 
 export async function POST(req: NextRequest) {
   try {
-    const json = await req.json().catch(() => ({}));
-    const parseResult = clearOrderSchema.safeParse(json);
+    // 解析请求体
+    const json = await req.json().catch(() => ({}))
+    const parseResult = clearOrderInputSchema.safeParse(json)
 
     if (!parseResult.success) {
       return NextResponse.json(
         {
-          error: "Invalid request body",
+          error: 'Invalid request body',
+          code: 'VALIDATION_ERROR',
           detail: parseResult.error.flatten(),
         },
-        { status: 400 },
-      );
+        { status: 400 }
+      )
     }
 
-    const { tableId } = parseResult.data;
-    const db = getDb();
+    // 调用 Service 处理业务逻辑
+    const db = getDb()
+    const result = await clearTableOrder(db, parseResult.data.tableId)
 
-    const result = await db.transaction(async (tx) => {
-      const [table] = await tx
-        .select({ id: restaurantTables.id })
-        .from(restaurantTables)
-        .where(eq(restaurantTables.id, tableId))
-        .limit(1);
-
-      if (!table) {
-        return NextResponse.json(
-          { error: "Table not found" },
-          { status: 404 },
-        );
-      }
-
-      const [currentOrder] = await tx
-        .select()
-        .from(orders)
-        .where(and(eq(orders.tableId, tableId), eq(orders.status, "open")))
-        .limit(1);
-
-      if (currentOrder) {
-        await tx
-          .delete(orderItems)
-          .where(eq(orderItems.orderId, currentOrder.id));
-
-        await tx
-          .update(orders)
-          .set({
-            status: "cancelled",
-            subtotal: "0",
-            total: "0",
-            discount:
-              currentOrder.discount != null
-                ? currentOrder.discount
-                : "0",
-            totalAmount: "0",
-            paidAmount: "0",
-            closedAt: new Date(),
-          })
-          .where(eq(orders.id, currentOrder.id));
-      }
-
-      // 清空后恢复桌台为空闲
-      await tx
-        .update(restaurantTables)
-        .set({ status: "idle", amount: "0" })
-        .where(eq(restaurantTables.id, tableId));
-
-      return {
-        order: null,
-        batches: [],
-      };
-    });
-
-    if (result instanceof NextResponse) {
-      return result;
-    }
-
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json(result, { status: 200 })
   } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : String(err);
-    console.error("POST /api/orders/clear error", err);
+    // 处理 AppError 及其子类
+    if (err instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+          detail: err.detail,
+        },
+        { status: err.statusCode }
+      )
+    }
+
+    // 处理未知错误
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('POST /api/orders/clear error', err)
     return NextResponse.json(
       {
-        error: "Failed to clear order",
+        error: 'Failed to clear order',
+        code: 'INTERNAL_ERROR',
         detail: message,
       },
-      { status: 500 },
-    );
+      { status: 500 }
+    )
   }
 }

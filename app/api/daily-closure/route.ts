@@ -1,62 +1,45 @@
-import { NextRequest, NextResponse } from "next/server"
-
-import { getDb } from "@/lib/db"
-import {
-  computeClosureSnapshotByRange,
-  DEFAULT_DAILY_CLOSURE_TAX_RATE,
-  getOrInitDailyClosureState,
-  toIsoString,
-} from "@/app/api/daily-closure/utils"
-import { buildDailyClosurePayments } from "@/lib/daily-closure/calculate"
-
-function jsonError(status: number, code: string, error: string, detail?: unknown) {
-  return NextResponse.json({ error, code, detail }, { status })
-}
-
 /**
+ * 日结预览 API 路由
+ * 
  * GET /api/daily-closure
  * 返回当前统计区间的预览数据
- * - periodStartAt: 从 daily_closure_state.current_period_start_at 读取
- * - periodEndAt: 当前时刻（now）
  */
+
+import { NextRequest, NextResponse } from 'next/server'
+
+import { getDb } from '@/lib/db'
+import { getCurrentClosurePreview } from '@/services/daily-closures'
+import { AppError } from '@/lib/http/errors'
+
 export async function GET(_req: NextRequest) {
   try {
     const db = getDb()
+    const result = await getCurrentClosurePreview(db)
 
-    // 获取当前统计区间起点
-    const state = await getOrInitDailyClosureState(db as any)
-    const periodStartAt = state.currentPeriodStartAt
-    const periodEndAt = new Date()
-    const taxRate = DEFAULT_DAILY_CLOSURE_TAX_RATE
-
-    // 计算当前区间的预览快照
-    const snapshot = await computeClosureSnapshotByRange(
-      db as any,
-      periodStartAt,
-      periodEndAt,
-      taxRate
-    )
-
-    return NextResponse.json({
-      periodStartAt: toIsoString(periodStartAt),
-      periodEndAt: toIsoString(periodEndAt),
-      sequenceNo: null, // 预览状态，尚未生成报告
-      taxRate,
-      locked: false,
-      closureId: null,
-      lockedAt: null,
-      overview: snapshot.overview,
-      payments: buildDailyClosurePayments(snapshot.paymentLines, []),
-      items: snapshot.items,
-      adjustments: [],
-      meta: {
-        refundVoidPolicy:
-          "当前系统未实现退款/作废流水统计口径，接口固定返回 0（后续可通过 transactions 扩展）。",
-      },
-    })
+    return NextResponse.json(result)
   } catch (err: unknown) {
+    // 处理 AppError 及其子类
+    if (err instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+          detail: err.detail,
+        },
+        { status: err.statusCode }
+      )
+    }
+
+    // 处理未知错误
     const message = err instanceof Error ? err.message : String(err)
-    console.error("GET /api/daily-closure error", err)
-    return jsonError(500, "INTERNAL_ERROR", "Failed to load daily closure preview", message)
+    console.error('GET /api/daily-closure error', err)
+    return NextResponse.json(
+      {
+        error: 'Failed to load daily closure preview',
+        code: 'INTERNAL_ERROR',
+        detail: message,
+      },
+      { status: 500 }
+    )
   }
 }

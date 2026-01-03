@@ -1,7 +1,15 @@
 /**
- * 桌台服务模块
- *
- * 负责桌台相关的业务逻辑处理
+ * 桌台服务模块入口
  */
 
-// TODO: Phase 2 将从 API 路由中提取桌台业务逻辑
+import 'server-only'
+
+export {
+    getAllTables,
+    getTableById,
+    createTable,
+    updateTable,
+    updateTableStatus,
+    deleteTable,
+    type TableResponse,
+} from './service'

@@ -1,82 +1,82 @@
-import { NextRequest, NextResponse } from "next/server"
-import { eq } from "drizzle-orm"
-import { z } from "zod"
+/**
+ * 日结调整 API 路由
+ * 
+ * POST /api/daily-closures/[id]/adjustments
+ * 添加日结调整
+ */
 
-import { getDb } from "@/lib/db"
-import { parseMoney, toMoneyString } from "@/lib/money"
-import { dailyClosureAdjustments, dailyClosures } from "@/db/schema"
-import { toIsoString } from "@/app/api/daily-closure/utils"
+import { NextRequest, NextResponse } from 'next/server'
 
-const bodySchema = z.object({
-  type: z.enum(["fee", "rounding", "other"]),
-  amount: z.number().finite(),
-  note: z.string().min(1),
-  paymentMethod: z.string().min(1).optional().nullable(),
-})
-
-function jsonError(status: number, code: string, error: string, detail?: unknown) {
-  return NextResponse.json({ error, code, detail }, { status })
-}
+import { getDb } from '@/lib/db'
+import { addClosureAdjustment, getClosureAdjustments } from '@/services/daily-closures'
+import { AppError } from '@/lib/http/errors'
+import { closureAdjustmentInputSchema } from '@/lib/contracts/daily-closures'
+import { uuidParamSchema } from '@/lib/contracts/common'
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params
 
-  const idParse = z.string().uuid().safeParse(id)
+  // 验证 ID 格式
+  const idParse = uuidParamSchema.safeParse({ id })
   if (!idParse.success) {
-    return jsonError(400, "INVALID_ID", "Invalid daily closure id")
-  }
-
-  const json = await req.json().catch(() => ({}))
-  const parseResult = bodySchema.safeParse(json)
-
-  if (!parseResult.success) {
-    return jsonError(400, "INVALID_BODY", "Invalid request body", parseResult.error.flatten())
+    return NextResponse.json(
+      { error: 'Invalid daily closure id', code: 'VALIDATION_ERROR' },
+      { status: 400 }
+    )
   }
 
   try {
-    const db = getDb()
+    // 解析请求体
+    const json = await req.json().catch(() => ({}))
+    const parseResult = closureAdjustmentInputSchema.safeParse(json)
 
-    const [closure] = await db
-      .select({ id: dailyClosures.id })
-      .from(dailyClosures)
-      .where(eq(dailyClosures.id, id))
-      .limit(1)
-
-    if (!closure) {
-      return jsonError(404, "NOT_FOUND", "Daily closure not found")
+    if (!parseResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Invalid request body',
+          code: 'VALIDATION_ERROR',
+          detail: parseResult.error.flatten(),
+        },
+        { status: 400 }
+      )
     }
 
-    await db.insert(dailyClosureAdjustments).values({
-      closureId: id,
-      type: parseResult.data.type,
-      amount: toMoneyString(parseResult.data.amount),
-      note: parseResult.data.note,
-      paymentMethod: parseResult.data.paymentMethod ?? null,
-    })
+    // 调用 Service 添加调整
+    const db = getDb()
+    await addClosureAdjustment(db, id, parseResult.data)
 
-    const rows = await db
-      .select()
-      .from(dailyClosureAdjustments)
-      .where(eq(dailyClosureAdjustments.closureId, id))
-      .orderBy(dailyClosureAdjustments.createdAt)
+    // 获取所有调整返回
+    const adjustments = await getClosureAdjustments(db, id)
 
     return NextResponse.json({
-      adjustments: rows.map((row) => ({
-        id: row.id,
-        type: row.type,
-        amount: parseMoney(row.amount),
-        note: row.note,
-        paymentMethod: row.paymentMethod ?? null,
-        createdAt: toIsoString(row.createdAt) ?? "",
-      })),
+      adjustments,
     })
   } catch (err: unknown) {
+    // 处理 AppError 及其子类
+    if (err instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+          detail: err.detail,
+        },
+        { status: err.statusCode }
+      )
+    }
+
+    // 处理未知错误
     const message = err instanceof Error ? err.message : String(err)
-    console.error("POST /api/daily-closures/[id]/adjustments error", err)
-    return jsonError(500, "INTERNAL_ERROR", "Failed to create adjustment", message)
+    console.error('POST /api/daily-closures/[id]/adjustments error', err)
+    return NextResponse.json(
+      {
+        error: 'Failed to create adjustment',
+        code: 'INTERNAL_ERROR',
+        detail: message,
+      },
+      { status: 500 }
+    )
   }
 }
-

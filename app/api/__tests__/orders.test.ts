@@ -216,5 +216,113 @@ describe("/api/orders", () => {
 
       expect(response.status).toBe(400)
     })
+
+    it("should accept items with notes field", async () => {
+      const request = new NextRequest("http://localhost/api/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          tableId: "123e4567-e89b-12d3-a456-426614174000",
+          items: [
+            {
+              menuItemId: "123e4567-e89b-12d3-a456-426614174001",
+              quantity: 1,
+              notes: "不要辣"
+            }
+          ],
+        }),
+      })
+
+      // 此测试验证 notes 字段不会导致校验失败
+      // 完整持久化链路参见：__tests__/integration/orders.test.ts
+      mockTx.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      })
+
+      const response = await POST(request)
+      // 返回 404 表示校验通过了（table not found）
+      expect(response.status).toBe(404)
+    })
+
+    it("should accept items with null notes", async () => {
+      const request = new NextRequest("http://localhost/api/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          tableId: "123e4567-e89b-12d3-a456-426614174000",
+          items: [
+            {
+              menuItemId: "123e4567-e89b-12d3-a456-426614174001",
+              quantity: 2,
+              notes: null
+            }
+          ],
+        }),
+      })
+
+      mockTx.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      })
+
+      const response = await POST(request)
+      // 返回 404 表示校验通过了（table not found）
+      expect(response.status).toBe(404)
+    })
+
+    it("should reject notes exceeding 500 characters", async () => {
+      const longNotes = "a".repeat(501)
+      const request = new NextRequest("http://localhost/api/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          tableId: "123e4567-e89b-12d3-a456-426614174000",
+          items: [
+            {
+              menuItemId: "123e4567-e89b-12d3-a456-426614174001",
+              quantity: 1,
+              notes: longNotes
+            }
+          ],
+        }),
+      })
+
+      const response = await POST(request)
+      // 应该返回 400 校验错误
+      expect(response.status).toBe(400)
+    })
+
+    it("should accept notes at exactly 500 characters", async () => {
+      const maxNotes = "备".repeat(500)
+      const request = new NextRequest("http://localhost/api/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          tableId: "123e4567-e89b-12d3-a456-426614174000",
+          items: [
+            {
+              menuItemId: "123e4567-e89b-12d3-a456-426614174001",
+              quantity: 1,
+              notes: maxNotes
+            }
+          ],
+        }),
+      })
+
+      mockTx.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      })
+
+      const response = await POST(request)
+      // 返回 404 表示校验通过了（table not found）
+      expect(response.status).toBe(404)
+    })
   })
 })

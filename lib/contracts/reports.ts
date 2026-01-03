@@ -11,6 +11,20 @@ export const reportTypeSchema = z.enum(['daily', 'weekly', 'monthly', 'custom'])
 export type ReportType = z.infer<typeof reportTypeSchema>
 
 /**
+ * 报表粒度
+ */
+export const reportGranularitySchema = z.enum(['day', 'week', 'month', 'year'])
+export type ReportGranularity = z.infer<typeof reportGranularitySchema>
+
+/**
+ * 报表查询（按粒度）
+ */
+export const reportGranularityQuerySchema = z.object({
+    granularity: reportGranularitySchema.optional().default('month'),
+})
+export type ReportGranularityQuery = z.infer<typeof reportGranularityQuerySchema>
+
+/**
  * 报表查询输入 Schema
  */
 export const reportQueryInputSchema = z.object({
@@ -19,6 +33,15 @@ export const reportQueryInputSchema = z.object({
     endDate: z.string().date().optional(),
 })
 export type ReportQueryInput = z.infer<typeof reportQueryInputSchema>
+
+/**
+ * 报表导出查询参数 Schema
+ */
+export const reportExportQuerySchema = z.object({
+    format: z.enum(['xlsx']).optional().default('xlsx'),
+    granularity: reportGranularitySchema.optional().default('month'),
+})
+export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>
 
 /**
  * 销售摘要响应 Schema

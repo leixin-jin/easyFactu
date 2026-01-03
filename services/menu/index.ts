@@ -1,7 +1,17 @@
 /**
- * 菜单服务模块
- *
- * 负责菜单相关的业务逻辑处理
+ * 菜单服务模块入口
  */
 
-// TODO: Phase 2 将从 API 路由中提取菜单业务逻辑
+import 'server-only'
+
+export {
+    getAllMenuItems,
+    getDeletedMenuItems,
+    getMenuItemById,
+    createMenuItem,
+    updateMenuItem,
+    deleteMenuItem,
+    restoreMenuItem,
+    toMenuItemResponse,
+    type MenuItemResponse,
+} from './service'

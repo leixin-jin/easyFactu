@@ -1,22 +1,27 @@
 import "@testing-library/jest-dom/vitest"
 import { cleanup } from "@testing-library/react"
-import { afterEach, beforeAll, afterAll } from "vitest"
+import { afterEach, beforeAll, afterAll, vi } from "vitest"
 import { server } from "./__tests__/mocks/server"
 
-if (!HTMLElement.prototype.hasPointerCapture) {
-  HTMLElement.prototype.hasPointerCapture = () => false
-}
+// Next.js server-only marker throws in non-RSC test runs; stub it for Vitest.
+vi.mock("server-only", () => ({}))
 
-if (!HTMLElement.prototype.setPointerCapture) {
-  HTMLElement.prototype.setPointerCapture = () => {}
-}
+if (typeof HTMLElement !== "undefined") {
+  if (!HTMLElement.prototype.hasPointerCapture) {
+    HTMLElement.prototype.hasPointerCapture = () => false
+  }
 
-if (!HTMLElement.prototype.releasePointerCapture) {
-  HTMLElement.prototype.releasePointerCapture = () => {}
-}
+  if (!HTMLElement.prototype.setPointerCapture) {
+    HTMLElement.prototype.setPointerCapture = () => {}
+  }
 
-if (!HTMLElement.prototype.scrollIntoView) {
-  HTMLElement.prototype.scrollIntoView = () => {}
+  if (!HTMLElement.prototype.releasePointerCapture) {
+    HTMLElement.prototype.releasePointerCapture = () => {}
+  }
+
+  if (!HTMLElement.prototype.scrollIntoView) {
+    HTMLElement.prototype.scrollIntoView = () => {}
+  }
 }
 
 beforeAll(() => {
@@ -24,7 +29,9 @@ beforeAll(() => {
 })
 
 afterEach(() => {
-  cleanup()
+  if (typeof document !== "undefined") {
+    cleanup()
+  }
   server.resetHandlers()
 })
 

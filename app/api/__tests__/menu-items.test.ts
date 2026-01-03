@@ -20,6 +20,10 @@ const mockDb = {
 // Valid UUID for testing
 const VALID_UUID = "12345678-1234-1234-1234-123456789012"
 const OTHER_UUID = "87654321-4321-4321-4321-210987654321"
+const TIMESTAMPS = {
+  createdAt: new Date("2024-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2024-01-01T00:00:00.000Z"),
+}
 
 // Helper to create mock context with params
 const mockContext = { params: Promise.resolve({}) }
@@ -33,9 +37,9 @@ describe("/api/menu-items", () => {
   describe("GET", () => {
     it("should return menu items with categories", async () => {
       const mockItems = [
-        { id: "1", name: "Test Item", nameEn: null, category: "Main", price: "10.00", description: null, image: null, available: true },
-        { id: "2", name: "Test Item 2", nameEn: "Test EN", category: "Main", price: "15.00", description: null, image: null, available: true },
-        { id: "3", name: "Drink", nameEn: null, category: "Beverage", price: "5.00", description: null, image: null, available: true },
+        { id: "1", name: "Test Item", nameEn: null, category: "Main", price: "10.00", description: null, image: null, available: true, ...TIMESTAMPS },
+        { id: "2", name: "Test Item 2", nameEn: "Test EN", category: "Main", price: "15.00", description: null, image: null, available: true, ...TIMESTAMPS },
+        { id: "3", name: "Drink", nameEn: null, category: "Beverage", price: "5.00", description: null, image: null, available: true, ...TIMESTAMPS },
       ]
 
       mockDb.select.mockReturnValue({
@@ -93,6 +97,7 @@ describe("/api/menu-items", () => {
         description: null,
         image: null,
         available: true,
+        ...TIMESTAMPS,
       }
 
       mockDb.select.mockReturnValue({
@@ -255,6 +260,7 @@ describe("/api/menu-items", () => {
         description: "Old desc",
         image: null,
         available: true,
+        ...TIMESTAMPS,
       }
 
       const updatedItem = { ...existingItem, name: "New Name" }
@@ -306,6 +312,7 @@ describe("/api/menu-items", () => {
         description: null,
         image: null,
         available: true,
+        ...TIMESTAMPS,
       }
 
       // First call: check if item exists
@@ -347,6 +354,7 @@ describe("/api/menu-items", () => {
         description: "Some description",
         image: "/image.jpg",
         available: true,
+        ...TIMESTAMPS,
       }
 
       // After update, nullable fields should be null in DB
@@ -456,6 +464,7 @@ describe("/api/menu-items", () => {
         description: null,
         image: null,
         available: true,
+        ...TIMESTAMPS,
       }
 
       const deletedItem = { ...existingItem, available: false }
@@ -492,8 +501,8 @@ describe("/api/menu-items", () => {
   describe("GET /api/menu-items/deleted", () => {
     it("should return deleted menu items", async () => {
       const deletedItems = [
-        { id: "1", name: "Deleted 1", nameEn: null, category: "Main", price: "10.00", description: null, image: null, available: false },
-        { id: "2", name: "Deleted 2", nameEn: null, category: "Beverage", price: "5.00", description: null, image: null, available: false },
+        { id: "1", name: "Deleted 1", nameEn: null, category: "Main", price: "10.00", description: null, image: null, available: false, ...TIMESTAMPS },
+        { id: "2", name: "Deleted 2", nameEn: null, category: "Beverage", price: "5.00", description: null, image: null, available: false, ...TIMESTAMPS },
       ]
 
       mockDb.select.mockReturnValue({
@@ -567,6 +576,7 @@ describe("/api/menu-items", () => {
         description: null,
         image: null,
         available: false,
+        ...TIMESTAMPS,
       }
 
       const restoredItem = { ...deletedItem, available: true }
@@ -617,6 +627,7 @@ describe("/api/menu-items", () => {
         description: null,
         image: null,
         available: false,
+        ...TIMESTAMPS,
       }
 
       // First call: check if item exists and is unavailable

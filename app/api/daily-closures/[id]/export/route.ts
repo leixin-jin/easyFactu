@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { z } from "zod"
 import ExcelJS from "exceljs"
 import { PDFDocument, StandardFonts } from "pdf-lib"
 
 import { getDb } from "@/lib/db"
 import { formatMoney } from "@/lib/money"
-import {
-  buildDailyClosureResponseFromLockedData,
-  loadLockedDailyClosureById,
-} from "@/app/api/daily-closure/utils"
-
-const querySchema = z.object({
-  format: z.enum(["pdf", "xlsx"]),
-})
+import { getClosureDetails } from "@/services/daily-closures"
+import { closureExportQuerySchema } from "@/lib/contracts/daily-closures"
+import { uuidParamSchema } from "@/lib/contracts/common"
+import { NotFoundError } from "@/lib/http/errors"
 
 function jsonError(status: number, code: string, error: string, detail?: unknown) {
   return NextResponse.json({ error, code, detail }, { status })
@@ -190,14 +185,14 @@ export async function GET(
 ) {
   const { id } = await context.params
 
-  const idParse = z.string().uuid().safeParse(id)
+  const idParse = uuidParamSchema.safeParse({ id })
   if (!idParse.success) {
     return jsonError(400, "INVALID_ID", "Invalid daily closure id")
   }
 
   const url = new URL(req.url)
   const formatParam = url.searchParams.get("format") || undefined
-  const queryParse = querySchema.safeParse({ format: formatParam })
+  const queryParse = closureExportQuerySchema.safeParse({ format: formatParam })
 
   if (!queryParse.success) {
     return jsonError(400, "INVALID_QUERY", "Invalid query parameters", queryParse.error.flatten())
@@ -205,12 +200,7 @@ export async function GET(
 
   try {
     const db = getDb()
-    const locked = await loadLockedDailyClosureById(db as any, id)
-    if (!locked) {
-      return jsonError(404, "NOT_FOUND", "Daily closure not found")
-    }
-
-    const payload = buildDailyClosureResponseFromLockedData(locked)
+    const payload = await getClosureDetails(db, id)
     if (!payload.locked) {
       return jsonError(409, "NOT_LOCKED", "Daily closure is not locked yet")
     }
@@ -239,9 +229,12 @@ export async function GET(
       },
     })
   } catch (err: unknown) {
+    if (err instanceof NotFoundError) {
+      return jsonError(404, "NOT_FOUND", "Daily closure not found")
+    }
+
     const message = err instanceof Error ? err.message : String(err)
     console.error("GET /api/daily-closures/[id]/export error", err)
     return jsonError(500, "INTERNAL_ERROR", "Failed to export daily closure", message)
   }
 }
-

@@ -1,73 +1,63 @@
-import { NextRequest, NextResponse } from "next/server"
-import { and, desc, eq, like } from "drizzle-orm"
-import { z } from "zod"
-
-import { getDb } from "@/lib/db"
-import { orders, restaurantTables, transactions } from "@/db/schema"
-import { parseMoney } from "@/lib/money"
-
-export const runtime = "nodejs"
-
-const querySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
-})
-
-function toIsoString(value: unknown): string | null {
-  if (value instanceof Date) return value.toISOString()
-  if (typeof value === "string") {
-    const parsed = new Date(value)
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString()
-  }
-  return null
-}
-
-function jsonError(status: number, code: string, error: string, detail?: unknown) {
-  return NextResponse.json({ error, code, detail }, { status })
-}
-
 /**
- * GET /api/checkout-history?limit=50
- * - 返回最近 N 条 POS 结账交易（最新在前）
+ * 结账历史 API 路由
+ * 
+ * GET /api/checkout-history - 获取最近的 POS 结账交易
  */
+
+import { NextRequest, NextResponse } from 'next/server'
+
+import { getDb } from '@/lib/db'
+import { getCheckoutHistory } from '@/services/checkout-history'
+import { AppError } from '@/lib/http/errors'
+import { checkoutHistoryQuerySchema } from '@/lib/contracts/checkout-history'
+
+export const runtime = 'nodejs'
+
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url)
-  const limitParam = url.searchParams.get("limit") ?? undefined
-  const queryParse = querySchema.safeParse({ limit: limitParam })
-
-  if (!queryParse.success) {
-    return jsonError(400, "INVALID_QUERY", "Invalid query parameters", queryParse.error.flatten())
-  }
-
   try {
-    const db = getDb()
-    const rows = await db
-      .select({
-        transactionId: transactions.id,
-        orderId: transactions.orderId,
-        amount: transactions.amount,
-        createdAt: transactions.createdAt,
-        tableNumber: restaurantTables.number,
-      })
-      .from(transactions)
-      .leftJoin(orders, eq(transactions.orderId, orders.id))
-      .leftJoin(restaurantTables, eq(orders.tableId, restaurantTables.id))
-      .where(and(eq(transactions.type, "income"), like(transactions.category, "POS checkout%")))
-      .orderBy(desc(transactions.createdAt))
-      .limit(queryParse.data.limit)
+    const url = new URL(req.url)
+    const limitParam = url.searchParams.get('limit') ?? undefined
+    const queryParse = checkoutHistoryQuerySchema.safeParse({ limit: limitParam })
 
-    const items = rows.map((row) => ({
-      transactionId: row.transactionId,
-      tableNumber: row.tableNumber ?? null,
-      amount: parseMoney(row.amount),
-      createdAt: toIsoString(row.createdAt) ?? "",
-      orderId: row.orderId ?? null,
-    }))
+    if (!queryParse.success) {
+      return NextResponse.json(
+        {
+          error: 'Invalid query parameters',
+          code: 'VALIDATION_ERROR',
+          detail: queryParse.error.flatten(),
+        },
+        { status: 400 }
+      )
+    }
+
+    // 调用 Service 处理业务逻辑
+    const db = getDb()
+    const items = await getCheckoutHistory(db, queryParse.data.limit)
 
     return NextResponse.json({ items }, { status: 200 })
   } catch (err: unknown) {
+    // 处理 AppError 及其子类
+    if (err instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+          detail: err.detail,
+        },
+        { status: err.statusCode }
+      )
+    }
+
+    // 处理未知错误
     const message = err instanceof Error ? err.message : String(err)
-    console.error("GET /api/checkout-history error", err)
-    return jsonError(500, "INTERNAL_ERROR", "Failed to load checkout history", message)
+    console.error('GET /api/checkout-history error', err)
+    return NextResponse.json(
+      {
+        error: 'Failed to load checkout history',
+        code: 'INTERNAL_ERROR',
+        detail: message,
+      },
+      { status: 500 }
+    )
   }
 }
-

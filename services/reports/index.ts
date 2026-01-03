@@ -1,7 +1,7 @@
 /**
- * 报表服务模块
- *
- * 负责报表生成相关的业务逻辑处理
+ * 报表服务模块入口
  */
 
-// TODO: Phase 2 将从 API 路由中提取报表业务逻辑
+import 'server-only'
+
+export { getReports } from './service'
