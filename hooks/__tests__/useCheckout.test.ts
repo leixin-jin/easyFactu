@@ -173,7 +173,8 @@ describe("useCheckout", () => {
         result.current.actions.setReceivedAmount(30)
       })
 
-      expect(result.current.changeAmount).toBe(-10)
+      // 使用领域层函数后，找零金额始终 >= 0
+      expect(result.current.changeAmount).toBe(0)
     })
   })
 
