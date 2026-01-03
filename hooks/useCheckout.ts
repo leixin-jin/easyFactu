@@ -4,6 +4,12 @@ import { useCallback, useMemo, useReducer } from "react"
 
 import type { OrderBatchView } from "@/lib/order-utils"
 import type { AAItemSelection, CartItem } from "@/types/pos"
+import {
+  calculateSubtotal,
+  calculateDiscount,
+  calculateChange,
+  calculateItemsCount,
+} from "@/lib/domain/checkout"
 
 interface CheckoutState {
   dialogOpen: boolean
@@ -14,13 +20,13 @@ interface CheckoutState {
   aaItems: AAItemSelection[]
   aaQuantityDialogOpen: boolean
   aaQuantityTarget:
-    | {
-        itemId: string
-        name: string
-        maxQuantity: number
-        price: number
-      }
-    | null
+  | {
+    itemId: string
+    name: string
+    maxQuantity: number
+    price: number
+  }
+  | null
   aaQuantityInput: number
 }
 
@@ -32,10 +38,10 @@ type CheckoutAction =
   | { type: "SET_PAYMENT_METHOD"; value: string }
   | { type: "SET_RECEIVED"; value: number }
   | {
-      type: "OPEN_AA_QUANTITY"
-      target: { itemId: string; name: string; maxQuantity: number; price: number }
-      currentQuantity: number
-    }
+    type: "OPEN_AA_QUANTITY"
+    target: { itemId: string; name: string; maxQuantity: number; price: number }
+    currentQuantity: number
+  }
   | { type: "CLOSE_AA_QUANTITY" }
   | { type: "SET_AA_QUANTITY_INPUT"; value: number }
   | { type: "CONFIRM_AA_QUANTITY"; quantity: number }
@@ -197,41 +203,48 @@ export function useCheckout(args: UseCheckoutArgs) {
     return Array.from(map.values())
   }, [batches, cart])
 
-  const existingSubtotal = useMemo(
+  // 使用领域层函数计算小计
+  const existingItems = useMemo(
     () =>
-      batches.reduce(
-        (batchSum, batch) =>
-          batchSum + batch.items.reduce((itemSum, item) => itemSum + item.price * item.quantity, 0),
-        0,
+      batches.flatMap((batch) =>
+        batch.items.map((item) => ({ price: item.price, quantity: item.quantity })),
       ),
     [batches],
   )
 
+  const existingSubtotal = useMemo(
+    () => calculateSubtotal(existingItems),
+    [existingItems],
+  )
+
   const draftSubtotal = useMemo(
-    () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    () => calculateSubtotal(cart),
     [cart],
   )
 
   const subtotal = existingSubtotal + draftSubtotal
-  const discountAmount = (subtotal * state.discountPercent) / 100
+  const discountAmount = calculateDiscount(subtotal, state.discountPercent)
   const total = subtotal - discountAmount
 
   const aaSubtotal = useMemo(() => {
-    return state.aaItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    return calculateSubtotal(state.aaItems)
   }, [state.aaItems])
 
   const checkoutSubtotal = state.aaMode ? aaSubtotal : subtotal
-  const checkoutDiscountAmount = (checkoutSubtotal * state.discountPercent) / 100
+  const checkoutDiscountAmount = calculateDiscount(checkoutSubtotal, state.discountPercent)
   const checkoutTotal = checkoutSubtotal - checkoutDiscountAmount
-  const changeAmount =
-    state.receivedAmount > 0 ? state.receivedAmount - checkoutTotal : 0
+  const changeAmount = calculateChange(checkoutTotal, state.receivedAmount)
 
-  const totalItemsCount =
-    batches.reduce(
-      (batchSum, batch) =>
-        batchSum + batch.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
-      0,
-    ) + cart.reduce((sum, item) => sum + item.quantity, 0)
+  // 使用领域层函数计算商品总数
+  const allItems = useMemo(
+    () => [
+      ...batches.flatMap((batch) => batch.items.map((item) => ({ quantity: item.quantity }))),
+      ...cart.map((item) => ({ quantity: item.quantity })),
+    ],
+    [batches, cart],
+  )
+
+  const totalItemsCount = calculateItemsCount(allItems)
 
   const maxExistingBatchNo =
     batches.length > 0 ? Math.max(...batches.map((b) => b.batchNo)) : 0
