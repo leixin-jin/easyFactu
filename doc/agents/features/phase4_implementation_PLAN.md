@@ -51,78 +51,58 @@ pnpm test __tests__/lib/     # 运行特定目录测试
 ```
 
 ## Workflow
-1. 领域层抽取 → 2. 核心工具函数测试 → 3. 结账计算测试 → 4. Service 集成测试 → 5. 验收
+1. 领域层 Facade 创建 → 2. 核心工具函数测试 → 3. Service 集成测试 → 4. 验收
 
 ## Acceptance Criteria
-- [x] `lib/domain/checkout.ts` 存在且包含纯业务计算函数
-- [x] `lib/domain/Order.ts` 存在且包含订单值对象/实体
-- [x] `lib/domain/Money.ts` 存在且包含 Money 值对象
-- [x] 业务计算只在 domain 层，`hooks/useCheckout.ts` 仅负责 UI 状态管理
-- [x] `lib/money.ts` 测试覆盖率 > 60%
-- [x] `lib/order-utils.ts` 测试覆盖率 > 60%
-- [x] `lib/domain/checkout.ts` 核心分支覆盖
-- [x] Checkout Service 主流程测试通过
-- [x] Reports/Daily Closure 聚合逻辑测试覆盖
+- [ ] `lib/domain/checkout.ts` 存在且包含纯业务计算函数
+- [ ] `lib/domain/Order.ts` 存在且包含订单值对象/实体
+- [ ] `lib/domain/Money.ts` 存在且包含 Money 值对象
+- [x] 业务计算只在 domain 层，`hooks/useCheckout.ts` 仅负责 UI 状态管理（已由 `lib/checkout/calculate.ts` 实现）
+- [ ] `lib/money.ts` 测试覆盖率 > 60%
+- [ ] `lib/order-utils.ts` 测试覆盖率 > 60%
+- [x] 结账计算核心分支覆盖（已由 `lib/checkout/__tests__/calculate.test.ts` 实现，132行测试）
+- [ ] Checkout Service 主流程测试通过
+- [ ] Reports/Daily Closure 聚合逻辑测试覆盖
 
 ## 任务清单（Tasks）
 
-### Task 1: 结账/AA 计算统一到 domain（ORD-05）
-**预计时间**: 3小时  
-**依赖**: Phase 3 ORD-01 完成
+### Task 1: 创建结账领域 Facade（ORD-05）
+**预计时间**: 1小时  
+**依赖**: 无（`lib/checkout/calculate.ts` 已包含完整计算逻辑）
 
 **AI 提示词**:
 ```
-ultrathink
-
-你是一位资深的领域驱动设计（DDD）工程师。请完成结账计算领域化任务：
+你是一位资深的领域驱动设计（DDD）工程师。请创建结账领域 Facade：
 
 ## 背景
-当前结账计算逻辑分散在多处：
-- `lib/checkout/calculate.ts`: 核心计算函数
-- `hooks/useCheckout.ts`: UI 状态管理，但混入了部分业务逻辑
-- `services/orders/checkout.ts`: 调用计算函数
+`lib/checkout/calculate.ts` 已包含完整的结账计算函数（`calculateCheckoutTotal`、`calculateAASplit`），且已有完整单测覆盖。
 
-需要建立清晰的领域层，确保业务规则纯函数化。
+需要创建 `lib/domain/` 目录作为领域层入口点。
 
 ## 任务
-1. 创建 `lib/domain/checkout.ts` 作为结账领域入口：
-   - 从 `lib/checkout/calculate.ts` 导入并重新导出核心函数
-   - 确保所有计算函数是纯函数（无副作用）
+1. 创建 `lib/domain/checkout.ts` 作为结账领域 Facade：
+   - 从 `@/lib/checkout/calculate` 重新导出所有函数和类型
+   - 添加 JSDoc 文档说明领域层职责
 
-2. 定义领域模型：
+2. 示例实现：
    ```typescript
-   interface OrderItem {
-     id: number
-     name: string
-     price: number
-     quantity: number
-   }
-   
-   interface CheckoutCalculationInput {
-     items: OrderItem[]
-     paymentMode: "full" | "aa"
-     aaItems?: { id: number; amount: number }[]
-   }
-   
-   interface CheckoutCalculationResult {
-     subtotal: number
-     discount: number
-     total: number
-     itemBreakdown: Array<{ itemId: number; amount: number }>
-   }
+   /**
+    * 结账领域层
+    *
+    * 包含结账相关的纯业务计算函数，无副作用。
+    * - 不依赖 React/Next.js
+    * - 不依赖数据库
+    * - 不依赖 HTTP/网络
+    */
+   export {
+     calculateCheckoutTotal,
+     calculateAASplit,
+     type CheckoutItem,
+     type CheckoutResult,
+     type AAAllocationItem,
+     type AASplitResult,
+   } from '@/lib/checkout/calculate'
    ```
-
-3. 实现核心计算函数：
-   - `calculateSubtotal(items)`
-   - `calculateAAPayment(items, aaItems)`
-   - `calculateCheckoutTotal(input)`
-
-4. 重构 `hooks/useCheckout.ts`：
-   - 移除业务计算逻辑
-   - 仅保留 UI 状态管理
-   - 调用 domain 层函数
-
-5. 更新 `services/orders/checkout.ts` 使用 domain 函数
 
 ## 领域层原则
 - ❌ 不依赖 React
@@ -132,13 +112,12 @@ ultrathink
 - ✅ 可独立单元测试
 
 ## 涉及文件
-- `lib/domain/checkout.ts`
-- `lib/checkout/calculate.ts`
-- `hooks/useCheckout.ts`
-- `services/orders/checkout.ts`
+- `lib/domain/checkout.ts`（新建）
+- `lib/checkout/calculate.ts`（已存在，无需修改）
 
 use context7
 ```
+
 
 ---
 
@@ -334,56 +313,15 @@ pnpm test --coverage
 
 ---
 
-### Task 5: 结账计算单测（TEST-02）
-**预计时间**: 2.5小时  
-**依赖**: Task 1
-
-**AI 提示词**:
-```
-你是一位资深的 JavaScript/TypeScript 测试工程师。请完成结账计算单测任务：
-
-## 任务
-创建 `__tests__/lib/domain/checkout.test.ts`：
-
-```typescript
-import { describe, it, expect } from 'vitest'
-import { calculateCheckoutTotal } from '@/lib/domain/checkout'
-
-describe('calculateCheckoutTotal', () => {
-  describe('完整结账', () => {
-    it('应该计算正确的总价', () => {
-      const input = {
-        items: [
-          { id: 1, name: '菜品A', price: 10, quantity: 2 },
-          { id: 2, name: '菜品B', price: 5, quantity: 3 },
-        ],
-        paymentMode: 'full' as const,
-      }
-      const result = calculateCheckoutTotal(input)
-      expect(result.total).toBe(35)
-    })
-    
-    it('应该处理空订单', () => {})
-  })
-  
-  describe('AA 结账', () => {
-    it('应该计算单人承担金额', () => {})
-    it('应该处理不均分情况', () => {})
-    it('应该支持部分 AA', () => {})
-  })
-  
-  describe('金额计算', () => {
-    it('应该正确四舍五入', () => {})
-  })
-})
-```
-
-## 涉及文件
-- `lib/domain/checkout.ts`
-- `__tests__/lib/domain/checkout.test.ts`（新建）
-```
+> [!NOTE]
+> **Task 5（结账计算单测）已完成**
+> 
+> `lib/checkout/__tests__/calculate.test.ts` 已包含 132 行完整测试，覆盖：
+> - `calculateCheckoutTotal`: 基本计算、折扣（0%/100%/边界值）、空订单、零数量
+> - `calculateAASplit`: AA 分摊、人数为 0、四舍五入
 
 ---
+
 
 ### Task 6: Money 值对象单测
 **预计时间**: 1.5小时  
@@ -501,7 +439,7 @@ describe('Order', () => {
 
 ### Task 8: Checkout Service 集成测试（TEST-03）
 **预计时间**: 3小时  
-**依赖**: Phase 3 ORD-01, Task 5
+**依赖**: Task 1
 
 **AI 提示词**:
 ```
@@ -566,8 +504,8 @@ describe('processCheckout', () => {
 你是一位资深的测试工程师。请完成 Reports/Daily Closure 单测任务：
 
 ## 任务
-1. 创建 `__tests__/services/reports/get.test.ts`
-2. 创建 `__tests__/services/daily-closures/get-current.test.ts`
+1. 创建 `__tests__/services/reports/service.test.ts`
+2. 创建 `__tests__/services/daily-closures/service.test.ts`
 
 ## 测试场景
 ```typescript
@@ -586,17 +524,17 @@ describe('daily closure calculation', () => {
 ```
 
 ## 涉及文件
-- `services/reports/get.ts`
-- `services/daily-closures/get-current.ts`
-- `__tests__/services/reports/get.test.ts`（新建）
-- `__tests__/services/daily-closures/get-current.test.ts`（新建）
+- `services/reports/service.ts`
+- `services/daily-closures/service.ts`
+- `__tests__/services/reports/service.test.ts`（新建）
+- `__tests__/services/daily-closures/service.test.ts`（新建）
 ```
 
 ---
 
 ### Task 10: 验收扫描 - 确认测试覆盖
 **预计时间**: 20分钟  
-**依赖**: Task 4-9
+**依赖**: Task 4, 6, 7, 8, 9
 
 **AI 提示词**:
 ```
@@ -610,13 +548,13 @@ describe('daily closure calculation', () => {
 
 2. 检查领域层纯净性：
    ```bash
-   # 确保 domain 层不依赖 React/Next/DB
-   rg "(import.*from ['\"](react|next|@/lib/db))" lib/domain --type ts
+   # 确保 domain 层不依赖 React/Next/DB/Drizzle
+   rg "(import.*from ['\"](@/lib/db|react|next|drizzle))" lib/domain --type ts
    ```
 
 3. 检查 hooks 中无业务计算：
    ```bash
-   rg "calculate" hooks/useCheckout.ts
+   rg "calculateCheckoutTotal|calculateAASplit" hooks/useCheckout.ts
    ```
 
 4. 记录结果到 `doc/agents/features/phase4_verification.md`
@@ -625,9 +563,9 @@ describe('daily closure calculation', () => {
 - [ ] `lib/domain/checkout.ts` 无 React/Next/DB 依赖
 - [ ] `lib/domain/Order.ts` 无外部依赖
 - [ ] `lib/domain/Money.ts` 无外部依赖
-- [ ] `hooks/useCheckout.ts` 无业务计算
+- [ ] `hooks/useCheckout.ts` 无直接调用计算函数
 - [ ] `lib/money.ts` 覆盖率 > 60%
-- [ ] `lib/domain/checkout.ts` 核心分支覆盖
+- [ ] 结账计算核心分支覆盖（已由 `lib/checkout/__tests__/calculate.test.ts` 实现）
 - [ ] Service 集成测试主流程通过
 ```
 
